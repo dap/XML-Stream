@@ -1,3 +1,12 @@
+1.13
+====
+  - Fixed bug in Parser with entities getting split by reads and
+    not interpreted properly.
+  - Moved IO::Select requirement to 1.13 per a bug report from
+    datawrangler.
+  - Added XML2Config function to handle parsing config.xml files.
+  - Fixed bug in the Parser parse and parsefile functions.
+
 1.12
 ====
   - Fixed SSL bug.

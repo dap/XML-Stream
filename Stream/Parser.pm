@@ -62,7 +62,7 @@ use vars qw($VERSION ); #$UNICODE);
 #  $UNICODE = 0;
 #}
 
-$VERSION = "1.12";
+$VERSION = "1.13";
 
 sub new {
   my $self = { };
@@ -131,6 +131,11 @@ sub parse {
 
   return if ($xml eq "");
 
+  if ($self->{XMLONHOLD} ne "") {
+    $self->{XML} = $self->{XMLONHOLD};
+    $self->{XMLONHOLD} = "";
+  }
+
   while($xml =~ s/<\!--.*?-->//gs) {}
 
   $self->{XML} .= $xml;
@@ -158,7 +163,7 @@ sub parse {
   while(1) {
     if (length($self->{XML}) == 0) {
       $self->{PARSING} = 0;
-      return $self->{TREE};
+      return $self->returnData(0);
     }
     my $eclose = -1;
     $eclose = index($self->{XML},"</".$self->{CNAME}->[$self->{CURR}].">")
@@ -173,7 +178,7 @@ sub parse {
 	$self->{DOC} = 0;
 	&{$self->{HANDLER}->{endDocument}}($self);
 	$self->{PARSING} = 0;
-	return $self->{TREE};
+	return $self->returnData(0);
       }
       next;
     }
@@ -183,7 +188,7 @@ sub parse {
       my $close = index($self->{XML},">");
       if ($close == -1) {
 	$self->{PARSING} = 0;
-	return $self->{TREE};
+	return $self->returnData(0);
       }
       my $empty = (substr($self->{XML},$close-1,1) eq "/");
       my $starttag;
@@ -221,7 +226,7 @@ sub parse {
     }
 
     if ($estart == -1) {
-      &{$self->{HANDLER}->{characters}}($self,$self->entityCheck($self->{XML}));
+      $self->{XMLONHOLD} = $self->{XML};
       $self->{XML} = "";
     } else {
       &{$self->{HANDLER}->{characters}}($self,$self->entityCheck(substr($self->{XML},0,$estart)));
@@ -289,20 +294,32 @@ sub parsefile {
   my $self = shift;
   my $file = shift;
 
+  open(FILE,$file);
+  my $file;
+  while(<FILE>) { $file .= $_; }
+  $self->parse($file);
+  while(<FILE>) { $self->parse($_); }
+  return $self->returnData();
+}
+
+
+sub returnData {
+  my $self = shift;
+  my $clearData = shift;
+  $clearData = 1 unless defined($clearData);
+
   my $sid = $self->{SID};
 
-  open(FILE,$file);
-  while(<FILE>) { $self->parse($_); }
   if ($self->{STYLE} eq "hash") {
     return unless exists($self->{SIDS}->{$sid}->{hash});
     my %hash = %{$self->{SIDS}->{$sid}->{hash}};
-    delete($self->{SIDS}->{$sid}->{hash});
+    delete($self->{SIDS}->{$sid}->{hash}) if ($clearData == 1);
     return %hash;
   }
   if ($self->{STYLE} eq "tree") {
     return unless exists($self->{SIDS}->{$sid}->{tree});
     my @tree = @{$self->{SIDS}->{$sid}->{tree}};
-    delete($self->{SIDS}->{$sid}->{tree});
+    delete($self->{SIDS}->{$sid}->{tree}) if ($clearData == 1);
     return ( \@tree );
   }
 }

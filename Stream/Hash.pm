@@ -45,7 +45,7 @@ it under the same terms as Perl itself.
 
 use vars qw($VERSION);
 
-$VERSION = "1.12";
+$VERSION = "1.13";
 
 ##############################################################################
 #
@@ -286,72 +286,74 @@ sub GetXMLData {
   if ($tag ne "") {
     my $count = 0;
     my @array;
-    foreach my $child (split(",",$$XMLTree{"$$XMLTree{root}-child"})) {
-      if (($$XMLTree{"$child-tag"} eq $tag) || ($tag eq "*")) {
+    if (exists($$XMLTree{"$$XMLTree{root}-child"})) {
+      foreach my $child (split(",",$$XMLTree{"$$XMLTree{root}-child"})) {
+	if (($$XMLTree{"$child-tag"} eq $tag) || ($tag eq "*")) {
 
-        #---------------------------------------------------------------------
-        # Filter out tags that do not contain the attribute and value.
-        #---------------------------------------------------------------------
-	next if (($value ne "") && ($attrib ne "") && exists($$XMLTree{$child."-att-".$attrib}) && ($$XMLTree{$child."-att-".$attrib} ne $value));
-	next if (($attrib ne "") && !exists($$XMLTree{$child."-att-".$attrib}));
+	  #-------------------------------------------------------------------
+	  # Filter out tags that do not contain the attribute and value.
+	  #-------------------------------------------------------------------
+	  next if (($value ne "") && ($attrib ne "") && exists($$XMLTree{$child."-att-".$attrib}) && ($$XMLTree{$child."-att-".$attrib} ne $value));
+	  next if (($attrib ne "") && !exists($$XMLTree{$child."-att-".$attrib}));
 
-        #---------------------------------------------------------------------
-	# Check for existence
-        #---------------------------------------------------------------------
-	if ($type eq "existence") {
-	  return 1;
-	}
-        #---------------------------------------------------------------------
-	# Return the raw CDATA value without mark ups, or the value of the
-        # requested attribute.
-        #---------------------------------------------------------------------
-	if ($type eq "value") {
-	  if ($attrib eq "") {
-	    return $$XMLTree{$child."-data"};
+	  #-------------------------------------------------------------------
+	  # Check for existence
+	  #-------------------------------------------------------------------
+	  if ($type eq "existence") {
+	    return 1;
 	  }
-	  return $$XMLTree{$child."-att-".$attrib}
-	    if (exists $$XMLTree{$child."-att-".$attrib});
-	}
-        #---------------------------------------------------------------------
-	# Return an array of values that represent the raw CDATA without
-        # mark up tags for the requested tags.
-        #---------------------------------------------------------------------
-	if ($type eq "value array") {
-	  push(@array,$$XMLTree{$child."-data"});
-	}
-        #---------------------------------------------------------------------
-	# Return a pointer to a new XML::Stream::Hash object that has the
-        # requested tag as the root tag if the type is "tree".
-	# Return an array of pointers to XML::Stream::Hash objects that have
-        # the requested tag as the root tags if the type is "tree array".
-        #---------------------------------------------------------------------
-	if (($type eq "tree") || ($type eq "tree array")) {
-	  return $child if ($type eq "tree");
-	  push(@array,$child) if ($type eq "tree array");
-	}
-        #---------------------------------------------------------------------
-	# Return a count of the number of tags that match
-        #---------------------------------------------------------------------
-	if ($type eq "count") {
-	  $count++;
-	}
-        #---------------------------------------------------------------------
-	# Return a count of the number of tags that match
-        #---------------------------------------------------------------------
-#	if ($type eq "index array") {
-#	  my @tree = ( $$XMLTree[1]->[$child] , $$XMLTree[1]->[$child+1] );
-#	  push(@array,$$XMLTree[1]->[$child],$child);
-#	}
-        #---------------------------------------------------------------------
-	# Return the attribute hash that matches this tag
-        #---------------------------------------------------------------------
-	if ($type eq "attribs") {
-	  my %hash;
-	  foreach my $att (grep { /^$child-att-/; } keys (%{$XMLTree})) {
-	    my ($name) = ($att =~ /^$child-att-(.*)$/);
-	    $hash{$name} = $$XMLTree{$att};
+	  #-------------------------------------------------------------------
+	  # Return the raw CDATA value without mark ups, or the value of the
+	  # requested attribute.
+	  #-------------------------------------------------------------------
+	  if ($type eq "value") {
+	    if ($attrib eq "") {
+	      return $$XMLTree{$child."-data"};
+	    }
+	    return $$XMLTree{$child."-att-".$attrib}
+	      if (exists $$XMLTree{$child."-att-".$attrib});
 	  }
-	  return %hash;
+	  #-------------------------------------------------------------------
+	  # Return an array of values that represent the raw CDATA without
+	  # mark up tags for the requested tags.
+	  #-------------------------------------------------------------------
+	  if ($type eq "value array") {
+	    push(@array,$$XMLTree{$child."-data"});
+	  }
+	  #-------------------------------------------------------------------
+	  # Return a pointer to a new XML::Stream::Hash object that has the
+	  # requested tag as the root tag if the type is "tree".
+	  # Return an array of pointers to XML::Stream::Hash objects that have
+	  # the requested tag as the root tags if the type is "tree array".
+	  #-------------------------------------------------------------------
+	  if (($type eq "tree") || ($type eq "tree array")) {
+	    return $child if ($type eq "tree");
+	    push(@array,$child) if ($type eq "tree array");
+	  }
+	  #-------------------------------------------------------------------
+	  # Return a count of the number of tags that match
+	  #-------------------------------------------------------------------
+	  if ($type eq "count") {
+	    $count++;
+	  }
+	  #-------------------------------------------------------------------
+	  # Return a count of the number of tags that match
+	  #-------------------------------------------------------------------
+#  	  if ($type eq "index array") {
+#	    my @tree = ( $$XMLTree[1]->[$child] , $$XMLTree[1]->[$child+1] );
+#	    push(@array,$$XMLTree[1]->[$child],$child);
+# 	  }
+	  #-------------------------------------------------------------------
+	  # Return the attribute hash that matches this tag
+	  #-------------------------------------------------------------------
+	  if ($type eq "attribs") {
+	    my %hash;
+	    foreach my $att (grep { /^$child-att-/; } keys (%{$XMLTree})) {
+	      my ($name) = ($att =~ /^$child-att-(.*)$/);
+	      $hash{$name} = $$XMLTree{$att};
+	    }
+	    return %hash;
+	  }
 	}
       }
     }
@@ -443,7 +445,8 @@ sub BuildXML {
 
   if (exists($$hash{"${id}-data"}) || exists($$hash{"${id}-child"})) {
     $str .= ">";
-    $str .= &XML::Stream::EscapeXML($$hash{"${id}-data"});
+    $str .= &XML::Stream::EscapeXML($$hash{"${id}-data"})
+      if exists($$hash{"${id}-data"});
     if (exists($$hash{"${id}-child"})) {
       foreach my $child (sort {$a cmp $b} split(",",$$hash{"${id}-child"})) {
 	$str .= &XML::Stream::Hash::BuildXML($child,$hash);

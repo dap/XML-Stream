@@ -16,6 +16,6 @@ WriteMakefile(
 	      'PREREQ_PM' => {
 			      'Unicode::String' => 2.06,
 			     },
-	      'VERSION'   => '1.12',
+	      'VERSION'   => '1.13',
 	      'dist'      => { 'COMPRESS' => 'gzip --best' }
 	     );

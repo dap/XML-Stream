@@ -199,14 +199,14 @@ use strict;
 use Socket;
 use Sys::Hostname;
 use IO::Socket;
-use IO::Select;
+use IO::Select 1.13;
 use FileHandle;
 use Carp;
 use POSIX;
 use Unicode::String;
 use vars qw($VERSION $PAC $SSL);
 
-$VERSION = "1.12";
+$VERSION = "1.13";
 
 use XML::Stream::Namespace;
 ($XML::Stream::Namespace::VERSION < $VERSION) &&
@@ -723,7 +723,7 @@ sub Connect {
       }
     }
 
-    $self->debug(1,"Connect: http_proxy($self->{SIDS}->{newconnection}->{httpproxyhostname}:$self->{SIDS}->{newconnection}->{httpproxport})");
+    $self->debug(1,"Connect: http_proxy($self->{SIDS}->{newconnection}->{httpproxyhostname}:$self->{SIDS}->{newconnection}->{httpproxyport})");
     $self->debug(1,"Connect: https_proxy($self->{SIDS}->{newconnection}->{httpsproxyhostname}:$self->{SIDS}->{newconnection}->{httpsproxyport})");
 
     #-------------------------------------------------------------------------
@@ -747,12 +747,12 @@ sub Connect {
 	new IO::Socket::INET(PeerAddr=>$self->{SIDS}->{newconnection}->{hostname},
 			     PeerPort=>$self->{SIDS}->{newconnection}->{port},
 			     Proto=>"tcp");
-      if ($self->{SIDS}->{newconnection}->{ssl} == 1) {
-	$self->debug(1,"Connect: Combo #0: Convert it to an SSL socket");
-	$self->LoadSSL();
-	$self->{SIDS}->{newconnection}->{sock} =
-	  IO::Socket::SSL::socketToSSL($self->{SIDS}->{newconnection}->{sock});
-      }
+#      if ($self->{SIDS}->{newconnection}->{ssl} == 1) {
+#	$self->debug(1,"Connect: Combo #0: Convert it to an SSL socket");
+#	$self->LoadSSL();
+#	$self->{SIDS}->{newconnection}->{sock} =
+#	  IO::Socket::SSL::socketToSSL($self->{SIDS}->{newconnection}->{sock});
+#      }
       $connected = defined($self->{SIDS}->{newconnection}->{sock});
       $self->debug(1,"Connect: Combo #0: connected($connected)");
     }
@@ -843,9 +843,11 @@ sub Connect {
     if (($self->{SIDS}->{newconnection}->{ssl} == 1) &&
 	(ref($self->{SIDS}->{newconnection}->{sock}) eq "IO::Socket::INET")) {
       $self->debug(1,"Connect: Convert normal socket to SSL");
+      $self->debug(1,"Connect: sock($self->{SIDS}->{newconnection}->{sock})");
       $self->LoadSSL();
       $self->{SIDS}->{newconnection}->{sock} =
 	IO::Socket::SSL::socketToSSL($self->{SIDS}->{newconnection}->{sock});
+      $self->debug(1,"Connect: ssl_sock($self->{SIDS}->{newconnection}->{sock})");
     }
   }
 
@@ -943,7 +945,7 @@ sub Connect {
       }
     }
 
-    return if($self->{SIDS}->{newconnection}->{select}->has_error(0));
+    return if($self->{SIDS}->{newconnection}->{select}->has_exception(0));
   }
   return if($self->{SIDS}->{newconnection}->{status} != 1);
 
@@ -1131,8 +1133,8 @@ sub Process {
   #---------------------------------------------------------------------------
   # If the Select has an error then shut this party down.
   #---------------------------------------------------------------------------
-  foreach my $connection ($self->{SELECT}->has_error(0)) {
-    $self->debug(4,"Process: has_error sid($self->{SOCKETS}->{$connection})");
+  foreach my $connection ($self->{SELECT}->has_exception(0)) {
+    $self->debug(4,"Process: has_exception sid($self->{SOCKETS}->{$connection})");
     $status{$self->{SOCKETS}->{$connection}} = -1;
   }
 
@@ -1273,7 +1275,7 @@ sub Send {
     }
   }
 
-  return if($self->{SIDS}->{$sid}->{select}->has_error(0));
+  return if($self->{SIDS}->{$sid}->{select}->has_exception(0));
 
   $self->{SIDS}->{$sid}->{keepalive} = time;
   return 1;
@@ -1497,6 +1499,93 @@ sub GetXMLData {
 
 ##############################################################################
 #
+# XML2Config - takes an XML data tree and turns it into a hash of hashes.
+#              This only works for certain kinds of XML trees like this:
+#
+#                <foo>
+#                  <bar>1</bar>
+#                  <x>
+#                    <y>foo</y>
+#                  </x>
+#                  <z>5</z>
+#                  <z>6</z>
+#                </foo>
+#
+#              The resulting hash would be:
+#
+#                $hash{bar} = 1;
+#                $hash{x}->{y} = "foo";
+#                $hash{z}->[0] = 5;
+#                $hash{z}->[1] = 6;
+#
+#              Good for config files.
+#
+##############################################################################
+sub XML2Config {
+  return &XML::Stream::Tree::XML2Config(@_) if (ref($_[0]) eq "ARRAY");
+  return &XML::Stream::Hash::XML2Config(@_) if (ref($_[0]) eq "HASH");
+}
+
+
+##############################################################################
+#
+# Config2XML - takes a hash and produces an XML string from it.  If the hash
+#              looks like this:
+#
+#                $hash{bar} = 1;
+#                $hash{x}->{y} = "foo";
+#                $hash{z}->[0] = 5;
+#                $hash{z}->[1] = 6;
+#
+#              The resulting xml would be:
+#
+#                <foo>
+#                  <bar>1</bar>
+#                  <x>
+#                    <y>foo</y>
+#                  </x>
+#                  <z>5</z>
+#                  <z>6</z>
+#                </foo>
+#
+#              Good for config files.
+#
+##############################################################################
+sub Config2XML {
+  my ($tag,$hash,$indent) = @_;
+  $indent = "" unless defined($indent);
+
+  my $xml;
+
+  if (ref($hash) eq "ARRAY") {
+    foreach my $item (@{$hash}) {
+      $xml .= &XML::Stream::Config2XML($tag,$item,$indent);
+    }
+  } else {
+    if ((ref($hash) eq "HASH") && ((scalar keys(%{$hash})) == 0)) {
+      $xml .= "$indent<$tag/>\n";
+    } else {
+      if (ref($hash) eq "") {
+	if ($hash eq "") {
+	  return "$indent<$tag/>\n";
+	} else {
+	  return "$indent<$tag>$hash</$tag>\n";
+	}
+      } else {
+	$xml .= "$indent<$tag>\n";
+	foreach my $item (sort {$a cmp $b} keys(%{$hash})) {
+	  $xml .= &XML::Stream::Config2XML($item,$hash->{$item},"  $indent");
+	}
+	$xml .= "$indent</$tag>\n";
+      }
+    }
+  }
+  return $xml;
+}
+
+
+##############################################################################
+#
 # EscapeXML - Simple function to make sure that no bad characters make it into
 #             in the XML string that might cause the string to be
 #             misinterpreted.
@@ -1505,15 +1594,17 @@ sub GetXMLData {
 sub EscapeXML {
   my $data = shift;
 
-  $data =~ s/&/&amp;/g;
-  $data =~ s/</&lt;/g;
-  $data =~ s/>/&gt;/g;
-  $data =~ s/\"/&quot;/g;
-  $data =~ s/\'/&apos;/g;
+  if (defined($data)) {
+    $data =~ s/&/&amp;/g;
+    $data =~ s/</&lt;/g;
+    $data =~ s/>/&gt;/g;
+    $data =~ s/\"/&quot;/g;
+    $data =~ s/\'/&apos;/g;
 
-  my $unicode = new Unicode::String();
-  $unicode->latin1($data);
-  $data = $unicode->utf8;
+    my $unicode = new Unicode::String();
+    $unicode->latin1($data);
+    $data = $unicode->utf8;
+  }
 
   return $data;
 }
@@ -1528,11 +1619,13 @@ sub EscapeXML {
 sub UnescapeXML {
   my $data = shift;
 
-  $data =~ s/&amp;/&/g;
-  $data =~ s/&lt;/</g;
-  $data =~ s/&gt;/>/g;
-  $data =~ s/&quot;/\"/g;
-  $data =~ s/&apos;/\'/g;
+  if (defined($data)) {
+    $data =~ s/&amp;/&/g;
+    $data =~ s/&lt;/</g;
+    $data =~ s/&gt;/>/g;
+    $data =~ s/&quot;/\"/g;
+    $data =~ s/&apos;/\'/g;
+  }
 
   return $data;
 }

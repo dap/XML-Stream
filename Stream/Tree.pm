@@ -45,7 +45,7 @@ it under the same terms as Perl itself.
 
 use vars qw($VERSION);
 
-$VERSION = "1.12";
+$VERSION = "1.13";
 
 ##############################################################################
 #
@@ -281,6 +281,7 @@ sub GetXMLData {
     my $count = 0;
     my @array;
     foreach my $child (1..$#{$$XMLTree[1]}) {
+      next if (($child/2) !~ /\./);
       if (($$XMLTree[1]->[$child] eq $tag) || ($tag eq "*")) {
 	next if (ref($$XMLTree[1]->[$child]) eq "ARRAY");
 
@@ -375,8 +376,6 @@ sub GetXMLData {
 	# Return the attribute hash that matches this tag
         #---------------------------------------------------------------------
 	if ($type eq "attribs") {
-	  print "fun:\n";
-	  &Net::Jabber::printData("\$fun", $$XMLTree[1]->[$child+1]);
 	  return (%{$$XMLTree[1]->[$child+1]->[0]});
 	}
       }
@@ -497,6 +496,47 @@ sub BuildXML {
   }
 
   return $str;
+}
+
+
+##############################################################################
+#
+# XML2Config - takes an XML data tree and turns it into a hash of hashes.
+#              This only works for certain kinds of XML trees like this:
+#
+#                <foo>
+#                  <bar>1</bar>
+#                  <x>
+#                    <y>foo</y>
+#                  </x>
+#                  <z>5</z>
+#                </foo>
+#
+#              The resulting hash would be:
+#
+#                $hash{bar} = 1;
+#                $hash{x}->{y} = "foo";
+#                $hash{z} = 5;
+#
+#              Good for config files.
+#
+##############################################################################
+sub XML2Config {
+  my ($XMLTree) = @_;
+
+  my %hash;
+  foreach my $tree (&XML::Stream::GetXMLData("tree array",$XMLTree,"*")) {
+    if ($tree->[0] eq "0") {
+      return $tree->[1] unless ($tree->[1] =~ /^\s*$/);
+    } else {
+      if (&XML::Stream::GetXMLData("count",$XMLTree,$tree->[0]) > 1) {
+	push(@{$hash{$tree->[0]}},&XML::Stream::XML2Config($tree));
+      } else {
+	$hash{$tree->[0]} = &XML::Stream::XML2Config($tree);
+      }
+    }
+  }
+  return \%hash;
 }
 
 

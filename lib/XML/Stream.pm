@@ -295,7 +295,7 @@ else
 }
 
 
-$VERSION = "1.20";
+$VERSION = "1.21";
 $NONBLOCKING = 0;
 
 use XML::Stream::Namespace;
@@ -341,7 +341,7 @@ sub new
 
     $self->{DATASTYLE} = "tree";
     $self->{DATASTYLE} = delete($args{style}) if exists($args{style});
-    
+
     if ((($self->{DATASTYLE} eq "tree") && !defined($XML::Stream::Tree::LOADED)) ||
         (($self->{DATASTYLE} eq "node") && !defined($XML::Stream::Node::LOADED))
        )

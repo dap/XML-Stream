@@ -70,9 +70,10 @@ it under the same terms as Perl itself.
 
 =cut
 
-use vars qw( $VERSION );
+use vars qw( $VERSION $LOADED );
 
-$VERSION = "1.20";
+$VERSION = "1.21";
+$LOADED = 1;
 
 ##############################################################################
 #

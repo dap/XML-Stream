@@ -1,3 +1,9 @@
+1.10
+====
+  - Added SetCallBacks function to repleace OnNode and provide other
+    hooks for more functions.
+  - Fixed initial connect function and error handling.
+
 1.09
 ====
   - Updated Connect to handle changing the values of the to and from

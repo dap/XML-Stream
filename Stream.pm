@@ -93,9 +93,20 @@ XML::Stream - Creates and XML Stream connection and parses return data
                      If a timeout period is not specified then the
                      function blocks until data is received.
 
-  OnNode(function pointer) - sets the callback used to handle the
-                             XML::Parser::Tree trees that are built
-                             for each top level tag.
+* DEPRECATED
+*  OnNode(function pointer) - This function is deprecated and will be
+*                             removed in a future version.  Instead, use
+*                             the SetCallBacks(node=>function) to do the
+*                             same thing...
+
+  SetCallBacks(node=>function,   - sets the callback that should be
+               update=>function)   called in various situations.  node
+                                   is used to handle the XML::Parser::Tree
+                                   trees that are built for each top
+                                   level tag.  Update is used for when
+                                   Process is blocking waiting for data,
+                                   but you want your original code to be
+                                   updated.
 
   GetRoot() - returns the attributes that the stream:stream tag sent by
               the other end listed in a hash.
@@ -142,7 +153,7 @@ XML::Stream - Creates and XML Stream connection and parses return data
   use XML::Stream;
 
   $stream = new XML::Stream;
-  $stream->OnNode(\&noder);
+  $stream->SetCallBacks(node=>\&noder);
   $stream->Connect(hostname => "jabber.org",
 		   port => 5222,
 		   namespace => "jabber:client",
@@ -191,7 +202,7 @@ if ($] >= 5.006) {
   $UNICODE = 0;
 }
 
-$VERSION = "1.09";
+$VERSION = "1.10";
 
 use XML::Stream::Namespace;
 ($XML::Stream::Namespace::VERSION < $VERSION) &&
@@ -269,7 +280,7 @@ sub new {
   # We are only going to use one callback, let the user call other callbacks
   # on his own.
   #---------------------------------------------------------------------------
-  $self->{NODE} = sub { $self->_node(@_) };
+  $self->SetCallBacks(node=>sub { $self->_node(@_) });
 
   #---------------------------------------------------------------------------
   # Set the default STATUS so that we can keep track of it throughout the
@@ -420,7 +431,11 @@ sub Connect {
   # Create the XML::Parser and register our callbacks
   #---------------------------------------------------------------------------
   my $expat =
-    new XML::Parser(Handlers => { Start => sub { $self->_handle_root(@_) } });
+    new XML::Parser(Handlers=>{ 
+			       Start => sub { $self->_handle_root(@_) },
+			       End   => sub { $self->_handle_close(@_) },
+			       Char  => sub { $self->_handle_cdata(@_) } 
+			      });
   $self->{SERVER}{parser} = $expat->parse_start();
   
   $self->{SERVER}{select} = new IO::Select($self->{SERVER}{sock})
@@ -543,6 +558,11 @@ sub Process {
     }
     $self->debug(3,"Process: timeout($timeout)");
     
+    if (exists($self->{CB}{update})) {
+      $self->debug(3,"Process: Calling user defined update function");
+      &{$self->{CB}{update}}();
+    }
+    
     $block = 1 if $self->{SERVER}{select}->can_read(0);
     $self->Send(" ") if ((time - $self->{KEEPALIVE}) > 60);
     $self->debug(3,"Process: block($block)");
@@ -633,15 +653,31 @@ sub ParseStream {
 
 ##############################################################################
 #
-# OnNode - registers a callback for when a node is received.  This is used so
-#          that the user can write his own functions to handle the incoming
-#          data.  If one is not defined then the internal callback _node is
-#          used.
+# OnNode - 
 #
 ##############################################################################
 sub OnNode {
   my $self = shift;
-  $self->{NODE} = shift;
+  print STDERR "WARNING:  This function has been deprecated....\n";
+  print STDERR "          Please use SetCallBacks instead\n";
+  $self->SetCallBacks(node=>shift);
+}
+
+
+###########################################################################
+#
+# SetCallBacks - Takes a hash with top level tags to look for as the keys
+#                and pointers to functions as the values.
+#
+###########################################################################
+sub SetCallBacks {
+  my $self = shift;
+  while($#_ >= 0) {
+    my $func = pop(@_);
+    my $tag = pop(@_);
+    $self->debug(1,"SetCallBacks: tag($tag) func($func)");
+    $self->{CB}{$tag} = $func;
+  }
 }
 
 
@@ -788,11 +824,17 @@ sub _handle_root {
   $self->{ROOT} = \%att;
 
   #---------------------------------------------------------------------------
+  # Sometimes we will get an error, so let's parse the tag assuming that we
+  # got a stream:error
+  #---------------------------------------------------------------------------
+  $self->_handle_element($expat,$tag,%att) if ($tag eq "stream:error");
+
+  #---------------------------------------------------------------------------
   # Now that we have gotten a root tag, let's look for the tags that make up
   # the stream.  Change the handler for a Start tag to another function.
   #---------------------------------------------------------------------------
   $expat->setHandlers(Start => sub { $self->_handle_element(@_)} ,
-		      End   => sub { $self->_handle_close(@_) }, 
+		      End   => sub { $self->_handle_close(@_) },
 		      Char  => sub { $self->_handle_cdata(@_) } 
 		     );
 }
@@ -834,6 +876,8 @@ sub _handle_cdata {
   my $self = shift;
   my ($expat, $cdata) = @_;
 
+  $self->debug(2,"_handle_cdata: expat($expat) cdata($cdata)");
+
   return if ($#{$self->{TREE}} == -1);
 
   if ($UNICODE == 1) {
@@ -844,7 +888,7 @@ sub _handle_cdata {
     $cdata = $unicode->latin1;
   }
 
-  $self->debug(2,"_handle_cdata: expat($expat) cdata($cdata)");
+#  $self->debug(2,"_handle_cdata: expat($expat) cdata($cdata)");
   
   my $pos = $#{$self->{TREE}};
   $self->debug(2,"_handle_cdata: pos($pos)");
@@ -885,7 +929,7 @@ sub _handle_close {
     } else {
       my @tree = @{$self->{TREE}};
       $self->{TREE} = [];
-      &{$self->{NODE}}(@tree);
+      &{$self->{CB}{node}}(@tree);
     }
   } else {
     push @{$self->{TREE}[$#{$self->{TREE}}]}, $CLOSED;
@@ -902,7 +946,6 @@ sub _handle_close {
 sub _node {
   my $self = shift;
   my @PassedNode = @_;
-  &Net::Jabber::printData("\$PassedNode",\@PassedNode);
   push(@{$self->{NODES}},\@PassedNode);
 }
 

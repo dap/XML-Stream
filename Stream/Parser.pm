@@ -62,7 +62,7 @@ use vars qw($VERSION ); #$UNICODE);
 #  $UNICODE = 0;
 #}
 
-$VERSION = "1.14";
+$VERSION = "1.15";
 
 sub new {
   my $self = { };
@@ -77,6 +77,52 @@ sub new {
   $self->{XML} = "";
   $self->{CNAME} = ();
   $self->{CURR} = 0;
+
+  $args{nonblocking} = 0 unless exists($args{nonblocking});
+
+  $self->{NONBLOCKING} = delete($args{nonblocking});
+
+  $self->{DEBUGTIME} = 0;
+  $self->{DEBUGTIME} = $args{debugtime} if exists($args{debugtime});
+
+  $self->{DEBUGLEVEL} = 0;
+  $self->{DEBUGLEVEL} = $args{debuglevel} if exists($args{debuglevel});
+
+  $self->{DEBUGFILE} = "";
+
+  if (exists($args{debugfh}) && ($args{debugfh} ne "")) {
+    $self->{DEBUGFILE} = $args{debugfh};
+    $self->{DEBUG} = 1;
+  }
+  if ((exists($args{debugfh}) && ($args{debugfh} eq "")) ||
+       (exists($args{debug}) && ($args{debug} ne ""))) {
+    $self->{DEBUG} = 1;
+    if (lc($args{debug}) eq "stdout") {
+      $self->{DEBUGFILE} = new FileHandle(">&STDERR");
+      $self->{DEBUGFILE}->autoflush(1);
+    } else {
+      if (-e $args{debug}) {
+	if (-w $args{debug}) {
+	  $self->{DEBUGFILE} = new FileHandle(">$args{debug}");
+	  $self->{DEBUGFILE}->autoflush(1);
+	} else {
+	  print "WARNING: debug file ($args{debug}) is not writable by you\n";
+	  print "         No debug information being saved.\n";
+	  $self->{DEBUG} = 0;
+	}
+      } else {
+	$self->{DEBUGFILE} = new FileHandle(">$args{debug}");
+	if (defined($self->{DEBUGFILE})) {
+	  $self->{DEBUGFILE}->autoflush(1);
+	} else {
+	  print "WARNING: debug file ($args{debug}) does not exist \n";
+	  print "         and is not writable by you.\n";
+	  print "         No debug information being saved.\n";
+	  $self->{DEBUG} = 0;
+	}
+      }
+    }
+  }
 
   $self->{SID} = exists($args{sid}) ? $args{sid} : "__xmlstream__:sid";
 
@@ -95,10 +141,40 @@ sub new {
     $self->{HANDLER}->{startElement} = sub{ &XML::Stream::Hash::_handle_element(@_); };
     $self->{HANDLER}->{endElement} = sub{ &XML::Stream::Hash::_handle_close(@_); };
     $self->{HANDLER}->{characters} = sub{ &XML::Stream::Hash::_handle_cdata(@_); };
+  } elsif ($self->{STYLE} eq "node") {
+    $self->{HANDLER}->{startDocument} = sub{ $self->startDocument(@_); };
+    $self->{HANDLER}->{endDocument} = sub{ $self->endDocument(@_); };
+    $self->{HANDLER}->{startElement} = sub{ &XML::Stream::Node::_handle_element(@_); };
+    $self->{HANDLER}->{endElement} = sub{ &XML::Stream::Node::_handle_close(@_); };
+    $self->{HANDLER}->{characters} = sub{ &XML::Stream::Node::_handle_cdata(@_); };
   }
   $self->setHandlers(%{$args{handlers}});
 
+  $self->{XMLONHOLD} = "";
+
+  push(@{$self->{SIDS}->{$self->{SID}}->{IDSTACK}},"root")
+    if ($self->{STYLE} eq "hash");
+
   return $self;
+}
+
+
+###########################################################################
+#
+# debug - prints the arguments to the debug log if debug is turned on.
+#
+###########################################################################
+sub debug {
+  return if ($_[1] > $_[0]->{DEBUGLEVEL});
+  my $self = shift;
+  my ($limit,@args) = @_;
+  return if ($self->{DEBUGFILE} eq "");
+  my $fh = $self->{DEBUGFILE};
+  if ($self->{DEBUGTIME} == 1) {
+    my ($sec,$min,$hour) = localtime(time);
+    print $fh sprintf("[%02d:%02d:%02d] ",$hour,$min,$sec);
+  }
+  print $fh "XML::Stream::Parser: $self->{STYLE}: @args\n";
 }
 
 
@@ -129,6 +205,7 @@ sub parse {
   my $self = shift;
   my $xml = shift;
 
+  return unless defined($xml);
   return if ($xml eq "");
 
   if ($self->{XMLONHOLD} ne "") {
@@ -172,12 +249,15 @@ sub parse {
     if ($eclose == 0) {
       $self->{XML} = substr($self->{XML},length($self->{CNAME}->[$self->{CURR}])+3,length($self->{XML})-length($self->{CNAME}->[$self->{CURR}])-3);
 
+      $self->{PARSING} = 0 if ($self->{NONBLOCKING} == 1);
       &{$self->{HANDLER}->{endElement}}($self,$self->{CNAME}->[$self->{CURR}]);
+      $self->{PARSING} = 1 if ($self->{NONBLOCKING} == 1);
+
       $self->{CURR}--;
       if ($self->{CURR} == 0) {
 	$self->{DOC} = 0;
-	&{$self->{HANDLER}->{endDocument}}($self);
 	$self->{PARSING} = 0;
+	&{$self->{HANDLER}->{endDocument}}($self);
 	return $self->returnData(0);
       }
       next;
@@ -191,12 +271,12 @@ sub parse {
 	return $self->returnData(0);
       }
       my $empty = (substr($self->{XML},$close-1,1) eq "/");
-      my $starttag;
-      if ($empty == 1) {
-	$starttag = substr($self->{XML},1,$close-2);
-      } else {
-	$starttag = substr($self->{XML},1,$close-1);
-      }
+      my $starttag = substr($self->{XML},1,$close-($empty ? 2 : 1));
+#      if ($empty == 1) {
+#	$starttag = substr($self->{XML},1,$close-2);
+#      } else {
+#	$starttag = substr($self->{XML},1,$close-1);
+#      }
       my $nextspace = index($starttag," ");
       my $attribs;
       my $name;
@@ -292,13 +372,14 @@ sub entityCheck {
 
 sub parsefile {
   my $self = shift;
-  my $file = shift;
+  my $fileName = shift;
 
-  open(FILE,$file);
+  open(FILE,$fileName);
   my $file;
   while(<FILE>) { $file .= $_; }
   $self->parse($file);
-  while(<FILE>) { $self->parse($_); }
+  close(FILE);
+
   return $self->returnData();
 }
 
@@ -314,13 +395,19 @@ sub returnData {
     return unless exists($self->{SIDS}->{$sid}->{hash});
     my %hash = %{$self->{SIDS}->{$sid}->{hash}};
     delete($self->{SIDS}->{$sid}->{hash}) if ($clearData == 1);
-    return %hash;
+    return \%hash;
   }
   if ($self->{STYLE} eq "tree") {
     return unless exists($self->{SIDS}->{$sid}->{tree});
     my @tree = @{$self->{SIDS}->{$sid}->{tree}};
     delete($self->{SIDS}->{$sid}->{tree}) if ($clearData == 1);
     return ( \@tree );
+  }
+  if ($self->{STYLE} eq "node") {
+    return unless exists($self->{SIDS}->{$sid}->{node});
+    my $node = $self->{SIDS}->{$sid}->{node}->[0];
+    delete($self->{SIDS}->{$sid}->{node}) if ($clearData == 1);
+    return $node;
   }
 }
 

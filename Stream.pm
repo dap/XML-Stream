@@ -32,11 +32,11 @@ XML::Stream - Creates and XML Stream connection and parses return data
 
 =head1 DESCRIPTION
 
-  This module provides the user with methods to connect to a remote server,
-  send a stream of XML to the server, and receive/parse an XML stream from
-  the server.  It is primarily based work for the Etherx XML router
-  developed by the Jabber Development Team.  For more information about
-  this project visit http://etherx.jabber.org/stream/.
+  This module provides the user with methods to connect to a remote
+  server, send a stream of XML to the server, and receive/parse an XML
+  stream from the server.  It is primarily based work for the Etherx XML
+  router developed by the Jabber Development Team.  For more information
+  about this project visit http://etherx.jabber.org/stream/.
 
   XML::Stream gives the user the ability to define a central callback
   that will be used to handle the tags received from the server.  These
@@ -49,23 +49,36 @@ XML::Stream - Creates and XML Stream connection and parses return data
   structure that it returns, please view the source of Stream.pm and
   look at the detailed description at the end of the file.
 
+
+  NOTE: The parser that XML::Stream::Parser provides, as are most Perl
+  parsers, is synchronous.  If you are in the middle of parsing a
+  packet and call a user defined callback, the Parser is blocked until
+  your callback finishes.  This means you cannot be operating on a
+  packet, send out another packet and wait for a response to that packet.
+  It will never get to you.  Threading might solve this, but as we all
+  know threading in Perl is not quite up to par yet.  This issue will be
+  revisted in the future.
+
+
+
 =head1 METHODS
 
-  new(debug=>string,       - creates the XML::Stream object.  debug should
-      debugfh=>FileHandle,   be set to the path for the debug log to be
-      debuglevel=>0|1|N,     written.  If set to "stdout" then the debug
-      debugtime=>0|1,        will go there.   Also, you can specify a
-      style=>string)         filehandle that already exists byt using
-                             debugfh.  debuglevel determines the amount of
-                             debug to generate.  0 is the least, 1 is a
-                             little more, N is the limit you want.  debugtime
-                             determines wether a timestamp should be
-                             preappended to the entry.  style defines the
-                             way the data structure is returned.  The two
-                             available styles are:
+  new(debug=>string,       - creates the XML::Stream object.  debug
+      debugfh=>FileHandle,   should be set to the path for the debug log
+      debuglevel=>0|1|N,     to be written.  If set to "stdout" then the
+      debugtime=>0|1,        debug will go there.   Also, you can specify
+      style=>string)         a filehandle that already exists byt using
+                             debugfh.  debuglevel determines the amount
+                             of debug to generate.  0 is the least, 1 is
+                             a little more, N is the limit you want.
+                             debugtime determines wether a timestamp
+                             should be preappended to the entry.  style
+                             defines the way the data structure is
+                             returned.  The two available styles are:
 
                                tree - XML::Parser Tree format
                                hash - XML::Stream::Hash format
+                               node - XML::Stream::Node format
 
                              For more information see the respective man
                              pages.
@@ -83,13 +96,14 @@ XML::Stream - Creates and XML Stream connection and parses return data
                                     stream from attribute to be something
                                     other than the hostname you are
                                     connecting from.  myhostname should
-                                    not be needed but if the module cannot
-                                    determine your hostname properly (check
-                                    the debug log), set this to the correct
-                                    value, or if you want the other side
-                                    of the  stream to think that you are
-                                    someone else.  The type determines
-                                    the kind of connection that is made:
+                                    not be needed but if the module
+                                    cannot determine your hostname
+                                    properly (check the debug log), set
+                                    this to the correct value, or if you
+                                    want the other side of the  stream to
+                                    think that you are someone else.  The
+                                    type determines the kind of
+                                    connection that is made:
                                       "tcpip"    - TCP/IP (default)
                                       "stdinout" - STDIN/STDOUT
                                       "http"     - HTTP
@@ -97,19 +111,19 @@ XML::Stream - Creates and XML Stream connection and parses return data
                                     variables http_proxy or https_proxy
                                     are set.  ssl specifies if an SLL
                                     socket should be used for encrypted
-                                    communications.  This function returns
-                                    the same hash from GetRoot() below.
-                                    Make sure you get the SID (Session ID)
-                                    since you have to use it to call most
-                                    other functions in here.
+                                    communications.  This function
+                                    returns the same hash from GetRoot()
+                                    below. Make sure you get the SID
+                                    (Session ID) since you have to use it
+                                    to call most other functions in here.
 
 
   OpenFile(string) - opens a filehandle to the argument specified, and
                      pretends that it is a stream.  It will ignore the
-                     outer tag, and not check if it was a <stream:stream/>.
-                     This is useful for writing a program that has to
-                     parse any XML file that is basically made up of
-                     small packets (like RDF).
+                     outer tag, and not check if it was a
+                     <stream:stream/>. This is useful for writing a
+                     program that has to parse any XML file that is
+                     basically made up of small packets (like RDF).
 
   Disconnect(sid) - sends the proper closing XML tag and closes the
                     specified socket down.
@@ -118,20 +132,21 @@ XML::Stream - Creates and XML Stream connection and parses return data
                      a timeout is specified then the Process function
                      waits that period of time before returning nothing.
                      If a timeout period is not specified then the
-                     function blocks until data is received.  The function
-                     returns a hash with session ids as the key, and
-                     status values or data as the hash values.
+                     function blocks until data is received.  The
+                     function returns a hash with session ids as the key,
+                     and status values or data as the hash values.
 
   SetCallBacks(node=>function,   - sets the callback that should be
                update=>function)   called in various situations.  node
                                    is used to handle the data structures
                                    that are built for each top level tag.
                                    Update is used for when Process is
-                                   blocking waiting for data, but you want
-                                   your original code to be updated.
+                                   blocking waiting for data, but you
+                                   want your original code to be updated.
 
-  GetRoot(sid) - returns the attributes that the stream:stream tag sent by
-                 the other end listed in a hash for the specified session.
+  GetRoot(sid) - returns the attributes that the stream:stream tag sent
+                 by the other end listed in a hash for the specified
+                 session.
 
   GetSock(sid) - returns a pointer to the IO::Socket object for the
                  specified session.
@@ -144,6 +159,15 @@ XML::Stream - Creates and XML Stream connection and parses return data
                       will hopefully contain some useful information
                       about why Process or Connect returned an undef
                       to you.
+
+  XPath(node,path) - returns an array of results that match the xpath.
+                     node can be any of the three types (Tree, Hash, Node).
+
+=head1 VARIABLES
+
+  $NONBLOCKING - tells the Parser to enter into a nonblocking state.  This
+                 might cause some funky behavior since you can get nested
+                 callbacks while things are waiting.  1=on, 0=off(default).
 
 =head1 EXAMPLES
 
@@ -221,9 +245,10 @@ use FileHandle;
 use Carp;
 use POSIX;
 use Unicode::String;
-use vars qw($VERSION $PAC $SSL);
+use vars qw($VERSION $PAC $SSL $NONBLOCKING %HANDLERS);
 
-$VERSION = "1.14";
+$VERSION = "1.15";
+$NONBLOCKING = 0;
 
 use XML::Stream::Namespace;
 ($XML::Stream::Namespace::VERSION < $VERSION) &&
@@ -241,7 +266,7 @@ use XML::Stream::Parser;
 ##############################################################################
 require Exporter;
 my @ISA = qw(Exporter);
-my @EXPORT_OK = qw(Hash Tree);
+my @EXPORT_OK = qw(Hash Tree Node);
 
 sub import {
   my $class = shift;
@@ -253,6 +278,18 @@ sub import {
     die($@) if ($@);
   }
 }
+
+$HANDLERS{tree}->{startElement} = \&XML::Stream::Tree::_handle_element;
+$HANDLERS{tree}->{endElement}   = \&XML::Stream::Tree::_handle_close;
+$HANDLERS{tree}->{characters}   = \&XML::Stream::Tree::_handle_cdata;
+
+$HANDLERS{hash}->{startElement} = \&XML::Stream::Hash::_handle_element;
+$HANDLERS{hash}->{endElement}   = \&XML::Stream::Hash::_handle_close;
+$HANDLERS{hash}->{characters}   = \&XML::Stream::Hash::_handle_cdata;
+
+$HANDLERS{node}->{startElement} = \&XML::Stream::Node::_handle_element;
+$HANDLERS{node}->{endElement}   = \&XML::Stream::Node::_handle_close;
+$HANDLERS{node}->{characters}   = \&XML::Stream::Node::_handle_cdata;
 
 
 sub new {
@@ -270,10 +307,14 @@ sub new {
   if ((($self->{DATASTYLE} eq "tree") &&
       !defined($XML::Stream::Tree::VERSION)) ||
       (($self->{DATASTYLE} eq "hash") &&
-       !defined($XML::Stream::Hash::VERSION))
+       !defined($XML::Stream::Hash::VERSION)) ||
+      (($self->{DATASTYLE} eq "node") &&
+       !defined($XML::Stream::Node::VERSION))
      ) {
     croak("The style that you have chosen was not defined when you \"use\"d the module.\n");
   }
+
+  $self->{DEBUGARGS} = \%args;
 
   $self->{DEBUGTIME} = 0;
   $self->{DEBUGTIME} = $args{debugtime} if exists($args{debugtime});
@@ -482,25 +523,14 @@ sub ConnectionAccept {
   # Create the XML::Stream::Parser and register our callbacks
   #-------------------------------------------------------------------------
   $self->{SIDS}->{$sid}->{parser} =
-    new XML::Stream::Parser(sid=>$sid,
-			    (($self->{DATASTYLE} eq "tree") ?
-			     (Handlers=>{
-					 startElement=>sub{ $self->_handle_root(@_) },
-					 endElement=>sub{ &XML::Stream::Tree::_handle_close($self,@_) },
-					 characters=>sub{ &XML::Stream::Tree::_handle_cdata($self,@_) }
-					}
-			     ) :
-			     ()
-			    ),
-			    (($self->{DATASTYLE} eq "hash") ?
-			     (Handlers=>{
-					 startElement=>sub{ $self->_handle_root(@_) },
-					 endElement=>sub{ &XML::Stream::Hash::_handle_close($self,@_) },
-					 characters=>sub{ &XML::Stream::Hash::_handle_cdata($self,@_) }
-					}
-			     ) :
-			     ()
-			    ),
+    new XML::Stream::Parser(%{$self->{DEBUGARGS}},
+			    nonblocking=>$NONBLOCKING,
+			    sid=>$sid,
+			    Handlers=>{
+				       startElement=>sub{ $self->_handle_root(@_) },
+				       endElement=>sub{ &{$HANDLERS{$self->{DATASTYLE}}->{endElement}}($self,@_) },
+				       characters=>sub{ &{$HANDLERS{$self->{DATASTYLE}}->{characters}}($self,@_) },
+				      }
 			   );
 
   $self->{SIDS}->{$sid}->{select} =
@@ -557,6 +587,11 @@ sub InitConnection {
   # later.
   #---------------------------------------------------------------------------
   $self->{SIDS}->{$sid}->{serverid} = $serverid;
+
+  #---------------------------------------------------------------------------
+  # First acitivty is the connection... duh. =)
+  #---------------------------------------------------------------------------
+  $self->MarkActivity($sid);
 }
 
 
@@ -667,10 +702,17 @@ sub Connect {
       new IO::Socket::INET(PeerAddr=>$self->{SIDS}->{newconnection}->{hostname},
 			   PeerPort=>$self->{SIDS}->{newconnection}->{port},
 			   Proto=>"tcp");
+    return unless $self->{SIDS}->{newconnection}->{sock};
+
     if ($self->{SIDS}->{newconnection}->{ssl} == 1) {
+      $self->debug(1,"Connect: Convert normal socket to SSL");
+      $self->debug(1,"Connect: sock($self->{SIDS}->{newconnection}->{sock})");
       $self->LoadSSL();
       $self->{SIDS}->{newconnection}->{sock} =
-	IO::Socket::SSL::socketToSSL($self->{SIDS}->{newconnection}->{sock});
+	IO::Socket::SSL::socketToSSL($self->{SIDS}->{newconnection}->{sock},
+				     {SSL_verify_mode=>0x00});
+      $self->debug(1,"Connect: ssl_sock($self->{SIDS}->{newconnection}->{sock})");
+      $self->debug(1,"Connect: SSL: We are secure") if ($self->{SIDS}->{newconnection}->{sock});
     }
     return unless $self->{SIDS}->{newconnection}->{sock};
   }
@@ -739,8 +781,16 @@ sub Connect {
       }
     }
 
-    $self->debug(1,"Connect: http_proxy($self->{SIDS}->{newconnection}->{httpproxyhostname}:$self->{SIDS}->{newconnection}->{httpproxyport})");
-    $self->debug(1,"Connect: https_proxy($self->{SIDS}->{newconnection}->{httpsproxyhostname}:$self->{SIDS}->{newconnection}->{httpsproxyport})");
+    $self->debug(1,"Connect: http_proxy($self->{SIDS}->{newconnection}->{httpproxyhostname}:$self->{SIDS}->{newconnection}->{httpproxyport})")
+      if (exists($self->{SIDS}->{newconnection}->{httpproxyhostname}) &&
+	  defined($self->{SIDS}->{newconnection}->{httpproxyhostname}) &&
+	  exists($self->{SIDS}->{newconnection}->{httpproxyport}) &&
+	  defined($self->{SIDS}->{newconnection}->{httpproxyport}));
+    $self->debug(1,"Connect: https_proxy($self->{SIDS}->{newconnection}->{httpsproxyhostname}:$self->{SIDS}->{newconnection}->{httpsproxyport})")
+      if (exists($self->{SIDS}->{newconnection}->{httpsproxyhostname}) &&
+	  defined($self->{SIDS}->{newconnection}->{httpsproxyhostname}) &&
+	  exists($self->{SIDS}->{newconnection}->{httpsproxyport}) &&
+	  defined($self->{SIDS}->{newconnection}->{httpsproxyport}));
 
     #-------------------------------------------------------------------------
     # Open the connection to the listed server and port.  If that fails then
@@ -763,12 +813,6 @@ sub Connect {
 	new IO::Socket::INET(PeerAddr=>$self->{SIDS}->{newconnection}->{hostname},
 			     PeerPort=>$self->{SIDS}->{newconnection}->{port},
 			     Proto=>"tcp");
-#      if ($self->{SIDS}->{newconnection}->{ssl} == 1) {
-#	$self->debug(1,"Connect: Combo #0: Convert it to an SSL socket");
-#	$self->LoadSSL();
-#	$self->{SIDS}->{newconnection}->{sock} =
-#	  IO::Socket::SSL::socketToSSL($self->{SIDS}->{newconnection}->{sock});
-#      }
       $connected = defined($self->{SIDS}->{newconnection}->{sock});
       $self->debug(1,"Connect: Combo #0: connected($connected)");
     }
@@ -790,7 +834,7 @@ sub Connect {
       if ($connected) {
 	$self->{SIDS}->{newconnection}->{sock}->syswrite($put,length($put),0);
 	my $buff;
-	$self->{SIDS}->{newconnection}->{sock}->sysread($buff,POSIX::BUFSIZ);
+	$self->{SIDS}->{newconnection}->{sock}->sysread($buff,4*POSIX::BUFSIZ);
 	my ($code) = ($buff =~ /^\S+\s+(\S+)\s+/);
 	$self->debug(1,"Connect: Combo #1: buff($buff)");
 	$connected = 0 if ($code !~ /2\d\d/);
@@ -814,7 +858,7 @@ sub Connect {
       if ($connected) {
 	$self->{SIDS}->{newconnection}->{sock}->syswrite($connect,length($connect),0);
 	my $buff;
-	$self->{SIDS}->{newconnection}->{sock}->sysread($buff,POSIX::BUFSIZ);
+	$self->{SIDS}->{newconnection}->{sock}->sysread($buff,4*POSIX::BUFSIZ);
 	my ($code) = ($buff =~ /^\S+\s+(\S+)\s+/);
 	$self->debug(1,"Connect: Combo #2: buff($buff)");
 	$connected = 0 if ($code !~ /2\d\d/);
@@ -837,7 +881,7 @@ sub Connect {
       if ($connected) {
 	$self->{SIDS}->{newconnection}->{sock}->syswrite($connect,length($connect),0);
 	my $buff;
-	$self->{SIDS}->{newconnection}->{sock}->sysread($buff,POSIX::BUFSIZ);
+	$self->{SIDS}->{newconnection}->{sock}->sysread($buff,4*POSIX::BUFSIZ);
 	my ($code) = ($buff =~ /^\S+\s+(\S+)\s+/);
 	$self->debug(1,"Connect: Combo #3: buff($buff)");
 	$connected = 0 if ($code !~ /2\d\d/);
@@ -854,6 +898,8 @@ sub Connect {
       return;
     }
 
+    return unless $self->{SIDS}->{newconnection}->{sock};
+
     $self->debug(1,"Connect: We are connected");
 
     if (($self->{SIDS}->{newconnection}->{ssl} == 1) &&
@@ -862,10 +908,15 @@ sub Connect {
       $self->debug(1,"Connect: sock($self->{SIDS}->{newconnection}->{sock})");
       $self->LoadSSL();
       $self->{SIDS}->{newconnection}->{sock} =
-	IO::Socket::SSL::socketToSSL($self->{SIDS}->{newconnection}->{sock});
+	IO::Socket::SSL::socketToSSL($self->{SIDS}->{newconnection}->{sock},
+				     {SSL_verify_mode=>0x00});
       $self->debug(1,"Connect: ssl_sock($self->{SIDS}->{newconnection}->{sock})");
+      $self->debug(1,"Connect: SSL: We are secure") if ($self->{SIDS}->{newconnection}->{sock});
     }
+    return unless $self->{SIDS}->{newconnection}->{sock};
   }
+
+  $self->debug(1,"Connect: Got a connection");
 
   $self->{SIDS}->{newconnection}->{sock}->autoflush(1);
 
@@ -897,25 +948,14 @@ sub Connect {
   # Create the XML::Stream::Parser and register our callbacks
   #---------------------------------------------------------------------------
   $self->{SIDS}->{newconnection}->{parser} =
-    new XML::Stream::Parser(sid=>"newconnection",
-			    (($self->{DATASTYLE} eq "tree") ?
-			     (Handlers=>{
-					 startElement=>sub{ $self->_handle_root(@_) },
-					 endElement=>sub{ &XML::Stream::Tree::_handle_close($self,@_) },
-					 characters=>sub{ &XML::Stream::Tree::_handle_cdata($self,@_) }
-					}
-			     ) :
-			     ()
-			    ),
-			    (($self->{DATASTYLE} eq "hash") ?
-			     (Handlers=>{
-					 startElement=>sub{ $self->_handle_root(@_) },
-					 endElement=>sub{ &XML::Stream::Hash::_handle_close($self,@_) },
-					 characters=>sub{ &XML::Stream::Hash::_handle_cdata($self,@_) }
-					}
-			     ) :
-			     ()
-			    ),
+    new XML::Stream::Parser(%{$self->{DEBUGARGS}},
+			    nonblocking=>$NONBLOCKING,
+			    sid=>"newconnection",
+			    Handlers=>{
+				       startElement=>sub{ $self->_handle_root(@_) },
+				       endElement=>sub{ &{$HANDLERS{$self->{DATASTYLE}}->{endElement}}($self,@_) },
+				       characters=>sub{ &{$HANDLERS{$self->{DATASTYLE}}->{characters}}($self,@_) },
+				      }
 			   );
 
   $self->{SIDS}->{newconnection}->{select} =
@@ -933,6 +973,8 @@ sub Connect {
     $self->{SOCKETS}->{*STDIN} = "newconnection";
     $self->{SIDS}->{newconnection}->{select}->add(*STDIN);
   }
+
+  $self->{SIDS}->{newconnection}->{status} = 0;
 
   #---------------------------------------------------------------------------
   # Then we send the opening handshake.
@@ -1003,7 +1045,10 @@ sub Disconnect {
     if (($self->{SIDS}->{$sid}->{connectiontype} eq "tcpip") ||
 	($self->{SIDS}->{$sid}->{connectiontype} eq "http"));
   delete($self->{SOCKETS}->{$self->{SIDS}->{$sid}->{sock}});
-  delete($self->{SIDS}->{$sid}->{sock});
+  foreach my $key (keys(%{$self->{SIDS}->{$sid}})) {
+    delete($self->{SIDS}->{$sid}->{$key});
+  }
+  delete($self->{SIDS}->{$sid});
 }
 
 
@@ -1028,25 +1073,14 @@ sub OpenFile {
   # Create the XML::Stream::Parser and register our callbacks
   #---------------------------------------------------------------------------
   $self->{SIDS}->{newconnection}->{parser} =
-    new XML::Stream::Parser(sid=>"newconnection",
-			    (($self->{DATASTYLE} eq "tree") ?
-			     (Handlers=>{
-					 startElement=>sub{ $self->_handle_root(@_) },
-					 endElement=>sub{ &XML::Stream::Tree::_handle_close($self,@_) },
-					 characters=>sub{ &XML::Stream::Tree::_handle_cdata($self,@_) }
-					}
-			     ) :
-			     ()
-			    ),
-			    (($self->{DATASTYLE} eq "hash") ?
-			     (Handlers=>{
-					 startElement=>sub{ $self->_handle_root(@_) },
-					 endElement=>sub{ &XML::Stream::Hash::_handle_close($self,@_) },
-					 characters=>sub{ &XML::Stream::Hash::_handle_cdata($self,@_) }
-					}
-			     ) :
-			     ()
-			    ),
+    new XML::Stream::Parser(%{$self->{DEBUGARGS}},
+			    nonblocking=>$NONBLOCKING,
+			    sid=>"newconnection",
+			    Handlers=>{
+				       startElement=>sub{ $self->_handle_root(@_) },
+				       endElement=>sub{ &{$HANDLERS{$self->{DATASTYLE}}->{endElement}}($self,@_) },
+				       characters=>sub{ &{$HANDLERS{$self->{DATASTYLE}}->{characters}}($self,@_) },
+				      }
 			   );
 
   $self->{SIDS}->{newconnection}->{select} =
@@ -1054,6 +1088,7 @@ sub OpenFile {
 
   $self->{SELECT} = new IO::Select($self->{SIDS}->{newconnection}->{sock});
 
+  $self->{SIDS}->{newconnection}->{status} = 0;
 
   my $buff = "";
   my $timeStart = time();
@@ -1157,6 +1192,7 @@ sub Process {
 	$status{$sid} = 1;
 	$self->{SIDS}->{$sid}->{status} = -1
 	  if (!defined($buff = $self->Read($sid)));
+	$buff = "" unless defined($buff);
 	$self->debug(4,"Process: connection_status($self->{SIDS}->{$sid}->{status})");
 	$status{$sid} = -1 unless($self->{SIDS}->{$sid}->{status} == 1);
 	$self->debug(4,"Process: parse($buff)");
@@ -1189,8 +1225,12 @@ sub Process {
     foreach my $sid (keys(%{$self->{SIDS}})) {
       next if ($sid eq "default");
       next if ($sid =~ /^server/);
-      $self->Send($sid," ")
-	if ((time - $self->{SIDS}->{$sid}->{keepalive}) > 60);
+      if ((time - $self->{SIDS}->{$sid}->{keepalive}) > 60) {
+	$self->IgnoreActivity($sid,1);
+	$self->Send($sid," ");
+	$self->IgnoreActivity($sid,0);
+      }
+
     }
     #-------------------------------------------------------------------------
     # Check for connections that have timed out.
@@ -1261,11 +1301,14 @@ sub ParseStream {
   my $sid = shift;
   my $stream = shift;
 
+  $stream = "" unless defined($stream);
+
   $self->debug(3,"ParseStream: sid($sid) stream($stream)");
 
   $self->{SIDS}->{$sid}->{parser}->parse($stream);
 
-  if ($self->{SIDS}->{$sid}->{streamerror} ne "") {
+  if (defined($self->{SIDS}->{$sid}->{streamerror}) &&
+      ($self->{SIDS}->{$sid}->{streamerror} ne "")) {
     $self->debug(3,"ParseStream: ERROR($self->{SIDS}->{$sid}->{streamerror})");
     $self->SetErrorCode($sid,$self->{SIDS}->{$sid}->{streamerror});
     return 0;
@@ -1302,8 +1345,12 @@ sub SetCallBacks {
   while($#_ >= 0) {
     my $func = pop(@_);
     my $tag = pop(@_);
-    $self->debug(1,"SetCallBacks: tag($tag) func($func)");
-    $self->{CB}->{$tag} = $func;
+    if (($tag eq "node") && !defined($func)) {
+      $self->SetCallBacks(node=>sub { $self->_node(@_) });
+    } else {
+      $self->debug(1,"SetCallBacks: tag($tag) func($func)");
+      $self->{CB}->{$tag} = $func;
+    }
   }
 }
 
@@ -1333,6 +1380,58 @@ sub GetSock {
   my $self = shift;
   my $sid = shift;
   return $self->{SIDS}->{$sid}->{sock};
+}
+
+
+##############################################################################
+#
+# IgnoreActivity - Takes the data string and sends it to the server
+#
+##############################################################################
+sub IgnoreActivity {
+  my $self = shift;
+  my $sid = shift;
+  my $ignoreActivity = shift;
+  $ignoreActivity = 1 unless defined($ignoreActivity);
+
+  $self->debug(1,"IgnoreActivity: ignoreActivity($ignoreActivity)");
+  $self->debug(3,"IgnoreActivity: sid($sid)");
+
+  $self->{SIDS}->{$sid}->{ignoreActivity} = $ignoreActivity;
+}
+
+
+##############################################################################
+#
+# LastActivity - Takes the data string and sends it to the server
+#
+##############################################################################
+sub LastActivity {
+  my $self = shift;
+  my $sid = shift;
+
+  $self->debug(3,"LastActivity: sid($sid)");
+  $self->debug(1,"LastActivity: lastActivity($self->{SIDS}->{$sid}->{lastActivity})");
+
+  return $self->{SIDS}->{$sid}->{lastActivity};
+}
+
+
+##############################################################################
+#
+# MarkActivity - Record the current time for this sid.
+#
+##############################################################################
+sub MarkActivity {
+  my $self = shift;
+  my $sid = shift;
+
+  return if (exists($self->{SIDS}->{$sid}->{ignoreActivity}) &&
+	     ($self->{SIDS}->{$sid}->{ignoreActivity} == 1));
+
+  $self->debug(3,"MarkActivity: sid($sid)");
+
+  $self->{SIDS}->{$sid}->{lastActivity} = time;
 }
 
 
@@ -1369,16 +1468,25 @@ sub Send {
     while ($self->{SENDLENGTH}) {
       $self->{SENDWRITTEN} = $self->{SIDS}->{$sid}->{sock}->syswrite($self->{SENDSTRING},$self->{SENDLENGTH},$self->{SENDOFFSET});
 
+      $self->debug(4,"Send: SENDWRITTEN($self->{SENDWRITTEN})");
+
       return unless defined($self->{SENDWRITTEN});
 
       $self->{SENDLENGTH} -= $self->{SENDWRITTEN};
       $self->{SENDOFFSET} += $self->{SENDWRITTEN};
     }
+  } else {
+    $self->debug(3,"Send: can't write...");
   }
 
   return if($self->{SIDS}->{$sid}->{select}->has_exception(0));
 
+  $self->debug(3,"Send: no exceptions");
+
   $self->{SIDS}->{$sid}->{keepalive} = time;
+
+  $self->MarkActivity($sid);
+
   return 1;
 }
 
@@ -1408,7 +1516,7 @@ sub Read {
 
   $self->{SIDS}->{$sid}->{sock}->flush();
 
-  $status = $self->{SIDS}->{$sid}->{sock}->sysread($buff,POSIX::BUFSIZ)
+  $status = $self->{SIDS}->{$sid}->{sock}->sysread($buff,4*POSIX::BUFSIZ)
     if (($self->{SIDS}->{$sid}->{connectiontype} eq "tcpip") ||
 	($self->{SIDS}->{$sid}->{connectiontype} eq "http") ||
 	($self->{SIDS}->{$sid}->{connectiontype} eq "file"));
@@ -1436,6 +1544,9 @@ sub Read {
 sub GetErrorCode {
   my $self = shift;
   my $sid = shift;
+
+  $sid = "newconnection" unless defined($sid);
+
   $self->debug(3,"GetErrorCode: sid($sid)");
   return ((exists($self->{SIDS}->{$sid}->{errorcode}) &&
 	   ($self->{SIDS}->{$sid}->{errorcode} ne "")) ?
@@ -1474,6 +1585,8 @@ sub _handle_root {
 
   $self->debug(2,"_handle_root: sid($sid) sax($sax) tag($tag) att(",%att,")");
 
+  $self->{SIDS}->{$sid}->{rootTag} = $tag;
+
   if ($self->{SIDS}->{$sid}->{connectiontype} ne "file") {
     #-------------------------------------------------------------------------
     # Make sure we are receiving a valid stream on the same namespace.
@@ -1506,21 +1619,20 @@ sub _handle_root {
       if ($self->{DATASTYLE} eq "tree");
     &XML::Stream::Hash::_handle_element($self,$sax,$tag,%att)
       if ($self->{DATASTYLE} eq "hash");
+    &XML::Stream::Node::_handle_element($self,$sax,$tag,%att)
+      if ($self->{DATASTYLE} eq "node");
   }
 
   #---------------------------------------------------------------------------
   # Now that we have gotten a root tag, let's look for the tags that make up
   # the stream.  Change the handler for a Start tag to another function.
   #---------------------------------------------------------------------------
-  $sax->setHandlers(startElement=>sub{ &XML::Stream::Tree::_handle_element($self,@_)} ,
-		    endElement=>sub{ &XML::Stream::Tree::_handle_close($self,@_) },
-		    characters=>sub{ &XML::Stream::Tree::_handle_cdata($self,@_) }
-		   )
-    if ($self->{DATASTYLE} eq "tree");
-  $sax->setHandlers(startElement=>sub{ &XML::Stream::Hash::_handle_element($self,@_)} ,
-		    endElement=>sub{ &XML::Stream::Hash::_handle_close($self,@_) },
-		    characters=>sub{ &XML::Stream::Hash::_handle_cdata($self,@_) }
-		   )
+  $sax->setHandlers(startElement=>sub{ &{$HANDLERS{$self->{DATASTYLE}}->{startElement}}($self,@_) },
+		    endElement=>sub{ &{$HANDLERS{$self->{DATASTYLE}}->{endElement}}($self,@_) },
+		    characters=>sub{ &{$HANDLERS{$self->{DATASTYLE}}->{characters}}($self,@_) },
+		   );
+
+  push(@{$self->{SIDS}->{$sid}->{IDSTACK}},"root")
     if ($self->{DATASTYLE} eq "hash");
 }
 
@@ -1560,6 +1672,7 @@ sub _node {
 #
 ##############################################################################
 sub SetXMLData {
+  return &XML::Stream::Node::SetXMLData(@_) if (ref($_[1]) eq "XML::Stream::Node");
   return &XML::Stream::Tree::SetXMLData(@_) if (ref($_[1]) eq "ARRAY");
   return &XML::Stream::Hash::SetXMLData(@_) if (ref($_[1]) eq "HASH");
 }
@@ -1593,6 +1706,7 @@ sub SetXMLData {
 #                                 the parameters
 #                     "count" - returns the number of things that match
 #                               the arguments
+#                     "tag" - returns the root tag of this tree
 #              XMLTree - pointer to XML::Stream data structure
 #              tag     - tag to pull data from.  If blank then the top level
 #                        tag is accessed.
@@ -1607,8 +1721,194 @@ sub SetXMLData {
 #
 ##############################################################################
 sub GetXMLData {
+  return &XML::Stream::Node::GetXMLData(@_) if (ref($_[1]) eq "XML::Stream::Node");
   return &XML::Stream::Tree::GetXMLData(@_) if (ref($_[1]) eq "ARRAY");
   return &XML::Stream::Hash::GetXMLData(@_) if (ref($_[1]) eq "HASH");
+}
+
+
+##############################################################################
+#
+# XPath - run an xpath query on a node and return back the results.  Calls
+#         XPathExec to do the work.
+#
+##############################################################################
+sub XPath {
+  my @exec = &XPathExec(@_);
+
+  my %results;
+  my @results;
+  foreach my $res (@exec) {
+    if ((ref($res) eq "ARRAY") && ($res->[0] eq "__xmlstream__:return")) {
+      if (ref($res->[1]) eq "ARRAY") {
+	if (!exists($results{$res->[1]->[1]})) {
+	  push(@results,$res->[2]);
+	  $results{$res->[1]->[1]} = 1;
+	}
+      } else {
+	if (!exists($results{$res->[1]})) {
+	  push(@results,$res->[2]);
+	  $results{$res->[1]} = 1;
+	}
+      }
+    } else {
+      if (ref($res) eq "ARRAY") {
+	if (!exists($results{$res->[1]})) {
+	  push(@results,$res);
+	  $results{$res->[1]} = 1;
+	}
+      } else {
+	if (!exists($results{$res})) {
+	  push(@results,$res);
+	  $results{$res} = 1;
+	}
+      }
+    }
+  }
+
+  return @results;
+}
+
+
+##############################################################################
+#
+# XPathExec - run an xpath query on a node and return back the results.  This
+#             is a helper function and should NEVER be called directly.
+#
+##############################################################################
+sub XPathExec {
+  my ($XMLTree,$path,$debug) = @_;
+
+  $debug = 0 unless defined($debug);
+
+  print "XPath: XMLTree($XMLTree) path($path)\n" if ($debug);
+  print &BuildXML($XMLTree),"\n" if ($debug);
+
+  my ($desc,$fullStep,$restPath) = ($path =~ /^(\/?\/?)([^\/]+)(.*)$/);
+
+  print "XPath: desc($desc) fullStep($fullStep) restPath($restPath)\n" if ($debug);
+
+  my $newPath = $restPath;
+  my $descPath = $restPath;
+  $descPath = $path if ($desc eq "//");
+
+  my ($filter) = ($fullStep =~ /\[([^\]]+)\]/);
+  $filter = "" unless defined($filter);
+  my $step = $fullStep;
+  $step =~ s/\[([^\]]+)\]// if ($step =~ /\[/);
+
+  print "XPath: fullStep($fullStep) step($step) filter($filter)\n" if ($debug);
+  print "XPath: newPath($newPath) descPath($descPath)\n" if ($debug);
+
+  return $XMLTree if ($step eq ".");
+
+  if ($step eq "text()") {
+    print "XPath: return text() of tree($XMLTree)\n" if ($debug);
+    return ["__xmlstream__:return",$XMLTree,&GetXMLData("value",$XMLTree)]
+  }
+
+
+  if ($step =~ /^\@/) {
+    my ($att) = ($step =~ /^@(.+)$/);
+    if ($att eq "*") {
+      my %atts = &GetXMLData("attribs",$XMLTree);
+      print "XPath: return attributes of tree($XMLTree)\n" if ($debug);
+      if (ref($XMLTree) eq "HASH") {
+	return ["__xmlstream__:return",$XMLTree->{root},\%atts];
+      } else{
+	return ["__xmlstream__:return",$XMLTree,\%atts];
+      }
+    } else {
+      print "XPath: check for attribute in tree($XMLTree)\n" if ($debug);
+      return unless &GetXMLData("existence",$XMLTree,"",$att);
+      print "XPath: return single attribute of tree($XMLTree)\n" if ($debug);
+      if (ref($XMLTree) eq "HASH") {
+	return ["__xmlstream__:return",$XMLTree->{root},&GetXMLData("value",$XMLTree,"",$att)];
+      } else{
+	return ["__xmlstream__:return",$XMLTree,&GetXMLData("value",$XMLTree,"",$att)];
+      }
+    }
+  }
+
+  my @return;
+  my $oldRoot = $XMLTree->{root} if (ref($XMLTree) eq "HASH");
+  foreach my $treePtr (&GetXMLData("tree array",$XMLTree,"*")) {
+    my $tree = $treePtr;
+    if (ref($XMLTree) eq "HASH") {
+      $tree = $XMLTree;
+      $tree->{root} = $treePtr;
+    }
+    next if (&GetXMLData("tag",$tree) eq "__xmlstream__:node:cdata");
+
+    print "XPath: loop: tag(",&GetXMLData("tag",$tree),") step($step) newPath($newPath)\n" if ($debug);
+
+    if ((&GetXMLData("tag",$tree) eq $step) || ($step eq "*")) {
+      print "XPath: we matched the step...\n" if ($debug);
+
+      my $pass = 1;
+      if ($filter ne "") {
+	print "XPath: and we have a filter... ($filter) run it\n" if ($debug);
+	foreach my $subFilter (split(/\s+and\s+/,$filter)) {
+	  if ($subFilter =~ /^\@/) {
+	    my ($att,$check,$value) = ($subFilter =~ /^\@([^\=]+)(\=?)[\'\"]?([^\'\"]*)[\'\"]?/);
+	    print "XPath: filter: att($att) check($check) value($value)\n" if ($debug);
+	    if ($check eq "") {
+	      print "XPath: res(",&GetXMLData("existence",$tree,"",$att),")\n" if ($debug);
+	      $pass &= &GetXMLData("existence",$tree,"",$att);
+	    } else {
+	      my $attVal = &GetXMLData("value",$tree,"",$att);
+	      print "XPath: res(",($attVal eq $value),")\n" if ($debug);
+	      $pass &= ($attVal eq $value);
+	    }
+	    last unless $pass;
+	  } else {
+	    my ($child,$check,$value) = ($subFilter =~ /^([^\=]+)(\=?)[\'\"]?([^\'\"]*)[\'\"]?/);
+	    print "XPath: filter: child($child) check($check) value($value)\n" if ($debug);
+	    if ($check eq "") {
+	      print "XPath: res(",&GetXMLData("existence",$tree,$child),")\n" if ($debug);
+	      $pass &= &GetXMLData("existence",$tree,$child);
+	    } else {
+	      my $childVal = &GetXMLData("value",$tree,$child);
+	      print "XPath: res(",($childVal eq $value),")\n" if ($debug);
+	      $pass &= ($childVal eq $value);
+	    }
+	    last unless $pass;
+	  }
+	}
+      }
+
+      if ($pass == 1) {
+	print "XPath: we have passed any and all tests...\n" if ($debug);
+	
+	if (($newPath eq "") || ($newPath eq $step) || ($step eq "*")) {
+	  print "XPath: return the tree($tree)\n" if ($debug);
+	  if (ref($tree) eq "HASH") {
+	    push(@return,$tree->{root});
+	  } else {
+	    push(@return,$tree);
+	  }
+	} else {
+	  print "XPath: return the results from XPathExec on tree($tree) newPath($newPath)\n" if ($debug);
+	  push(@return,&XPathExec($tree,$newPath,$debug));
+	}
+	if ($descPath =~ /^\/\//) {
+	  print "XPath: we passed, but we have a desc path... return that result\n" if ($debug);
+	  push(@return,&XPathExec($tree,$descPath,$debug));
+	}
+      }
+    } else {
+      print "XPath: no match...\n" if ($debug);
+      if ($desc eq "//") {
+	print "XPath: but descend...\n" if ($debug);
+	push(@return,&XPathExec($tree,$descPath,$debug));
+      }
+    }
+  }
+  $XMLTree->{root} = $oldRoot if (ref($XMLTree) eq "HASH");
+
+  print "XPath: finish\n" if ($debug);
+
+  return @return;
 }
 
 
@@ -1637,6 +1937,7 @@ sub GetXMLData {
 #
 ##############################################################################
 sub XML2Config {
+  return &XML::Stream::Node::XML2Config(@_) if (ref($_[0]) eq "XML::Stream::Node");
   return &XML::Stream::Tree::XML2Config(@_) if (ref($_[0]) eq "ARRAY");
   return &XML::Stream::Hash::XML2Config(@_) if (ref($_[0]) eq "HASH");
 }
@@ -1753,8 +2054,10 @@ sub UnescapeXML {
 #
 ##############################################################################
 sub BuildXML {
+  return &XML::Stream::Node::BuildXML(@_) if (ref($_[0]) eq "XML::Stream::Node");
+  return &XML::Stream::Hash::BuildXML(1,@_) if (ref($_[0]) eq "HASH");
+  return &XML::Stream::Tree::BuildXML(@{$_[0]}) if (ref($_[0]) eq "ARRAY");
   return &XML::Stream::Tree::BuildXML(@_) if (ref($_[1]) eq "ARRAY");
-  return &XML::Stream::Hash::BuildXML(1,@_);
 }
 
 
@@ -1765,9 +2068,88 @@ sub BuildXML {
 ##############################################################################
 sub LoadSSL {
   if (!defined($SSL)) {
-    require IO::Socket::SSL;
+    my $SSL_Version = "0.81";
+    eval "use IO::Socket::SSL $SSL_Version";
+    if ($@) {
+      croak("You requested that XML::Stream turn the socket into an SSL socket, but you don't have the correct version of IO::Socket::SSL v$SSL_Version.");
+    }
     IO::Socket::SSL::context_init({SSL_verify_mode=>0x00});
     $SSL = 1;
   }
 }
+
+
+##############################################################################
+#
+# printData - debugging function to print out any data structure in an
+#             organized manner.  Very useful for debugging XML::Parser::Tree
+#             objects.  This is a private function that will only exist in
+#             in the development version.
+#
+##############################################################################
+sub printData {
+  print &sprintData(@_);
+}
+
+
+##############################################################################
+#
+# sprintData - debugging function to build a string out of any data structure
+#              in an organized manner.  Very useful for debugging
+#              XML::Parser::Tree objects and perl hashes of hashes.
+#
+#              This is a private function.
+#
+##############################################################################
+sub sprintData {
+  my ($preString,$data) = @_;
+
+  my $outString = "";
+
+  if (ref($data) eq "HASH") {
+    my $key;
+    foreach $key (sort { $a cmp $b } keys(%{$data})) {
+      if (ref($$data{$key}) eq "") {
+	my $value = defined($$data{$key}) ? $$data{$key} : "";
+	$outString .= $preString."{'$key'} = \"".$value."\";\n";
+      } else {
+	if (ref($$data{$key}) =~ /Net::Jabber/) {
+	  $outString .= $preString."{'$key'} = ".ref($$data{$key}).";\n";
+	} else {
+	  $outString .= $preString."{'$key'};\n";
+	  $outString .= &sprintData($preString."{'$key'}->",$$data{$key});
+	}
+      }
+    }
+  } else {
+    if (ref($data) eq "ARRAY") {
+      my $index;
+      foreach $index (0..$#{$data}) {
+	if (ref($$data[$index]) eq "") {
+	  $outString .= $preString."[$index] = \"$$data[$index]\";\n";
+	} else {
+	  if (ref($$data[$index]) =~ /Net::Jabber/) {
+	    $outString .= $preString."[$index] = ".ref($$data[$index]).";\n";
+	  } else {
+	    $outString .= $preString."[$index];\n";
+	    $outString .= &sprintData($preString."[$index]->",$$data[$index]);
+	  }
+	}
+      }
+    } else {
+      if (ref($data) eq "REF") {
+	$outString .= &sprintData($preString."->",$$data);
+      } else {
+	if (ref($data) eq "") {
+	  $outString .= $preString." = \"$data\";\n";
+	} else {
+ 	  $outString .= $preString." = ".ref($data).";\n";
+	}
+      }
+    }
+  }
+
+  return $outString;
+}
+
 

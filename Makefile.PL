@@ -9,6 +9,7 @@ WriteMakefile(
 			      'Stream.pm' => '$(INST_LIBDIR)/Stream.pm',
 			      'Stream/Tree.pm' => '$(INST_LIBDIR)/Stream/Tree.pm',
 			      'Stream/Hash.pm' => '$(INST_LIBDIR)/Stream/Hash.pm',
+			      'Stream/Node.pm' => '$(INST_LIBDIR)/Stream/Node.pm',
 			      'Stream/Namespace.pm' => '$(INST_LIBDIR)/Stream/Namespace.pm',
 			      'Stream/Parser.pm' => '$(INST_LIBDIR)/Stream/Parser.pm',
 			      'Stream/Parser/DTD.pm' => '$(INST_LIBDIR)/Stream/Parser/DTD.pm',
@@ -16,6 +17,6 @@ WriteMakefile(
 	      'PREREQ_PM' => {
 			      'Unicode::String' => 2.06,
 			     },
-	      'VERSION'   => '1.14',
+	      'VERSION'   => '1.15',
 	      'dist'      => { 'COMPRESS' => 'gzip --best' }
 	     );

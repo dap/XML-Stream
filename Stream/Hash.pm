@@ -29,8 +29,46 @@ to work with.
 
 =head1 SYNOPSIS
 
-  Just a collection of functions that do not need to be in memorf if you
+  Just a collection of functions that do not need to be in memory if you
 choose one of the other methods of data storage.
+
+  The Hash format is an exercise to reduce the memory foot print of the
+XML.  By not using the Tree format with many levels of arrays and hashs,
+and just using one large Hash you lower the memory requirements but lose
+some flexability.
+
+  One thing you lose is that you cannot do:
+
+    "text <tag>something</tag> more text"
+
+  The format is not setup to handle that.  It is optimized to only handle
+either children, or cdata, but not a mixture of both.
+
+=head1 FORMAT
+
+The result of parsing:
+
+  <foo><head id="a">Hello <em>there</em></head><bar>Howdy<ref/></bar>do</foo>
+
+would be:
+
+  $hash{'root'}     = "1";
+  $hash{'1-child'}  = "2,4";
+  $hash{'1-data'}   = "do";
+  $hash{'1-desc'}   = "2,3,4,5";
+  $hash{'1-tag'}    = "foo";
+  $hash{'2-att-id'} = "a";
+  $hash{'2-child'}  = "3";
+  $hash{'2-data'}   = "Hello ";
+  $hash{'2-desc'}   = "3";
+  $hash{'2-tag'}    = "head";
+  $hash{'3-data'}   = "there";
+  $hash{'3-tag'}    = "em";
+  $hash{'4-child'}  = "5";
+  $hash{'4-data'}   = "Howdy";
+  $hash{'4-desc'}   = "5";
+  $hash{'4-tag'}    = "bar";
+  $hash{'5-tag'}    = "ref";
 
 =head1 AUTHOR
 
@@ -45,7 +83,7 @@ it under the same terms as Perl itself.
 
 use vars qw($VERSION);
 
-$VERSION = "1.14";
+$VERSION = "1.15";
 
 ##############################################################################
 #
@@ -61,11 +99,15 @@ sub _handle_element {
   my ($sax, $tag, %att) = @_;
   my $sid = $sax->getSID();
 
-  $self->debug(2,"_handle_element: sid($sid) sax($sax) tag($tag) att(",%att,")")
-    unless (ref($self) eq "XML::Stream::Parser");
+  $self->debug(2,"_handle_element: sid($sid) sax($sax) tag($tag) att(",%att,")");
+
+  if (!exists($self->{SIDS}->{$sid}->{rootTag}) ||
+      !defined($self->{SIDS}->{$sid}->{rootTag})) {
+    $self->{SIDS}->{$sid}->{rootTag} = $tag;
+  }
 
   my $element;
-  if ($#{$self->{SIDS}->{$sid}->{IDSTACK}} == -1) {
+  if ($#{$self->{SIDS}->{$sid}->{IDSTACK}} == 0) {
     $self->{SIDS}->{$sid}->{ID} = 0;
     $self->{SIDS}->{$sid}->{hash}->{root} = 1;
   }
@@ -81,13 +123,13 @@ sub _handle_element {
     $self->{SIDS}->{$sid}->{hash}->{"${id}-att-${key}"} = $value;
   }
 
-  if ($#{$self->{SIDS}->{$sid}->{IDSTACK}} >= 1) {
+  if ($#{$self->{SIDS}->{$sid}->{IDSTACK}} >= 2) {
     my $parent = $self->{SIDS}->{$sid}->{IDSTACK}->[$#{$self->{SIDS}->{$sid}->{IDSTACK}}-1];
 
-    $self->{SIDS}->{$sid}->{hash}->{"$parent-child"} .= ",$id";
-    $self->{SIDS}->{$sid}->{hash}->{"$parent-child"} =~ s/^\,//;
+    $self->{SIDS}->{$sid}->{hash}->{"${parent}-child"} .= ",${id}";
+    $self->{SIDS}->{$sid}->{hash}->{"${parent}-child"} =~ s/^\,//;
 
-    $self->{SIDS}->{$sid}->{DESCSTACK}->[$#{$self->{SIDS}->{$sid}->{DESCSTACK}}-1] .= "$id,";
+    $self->{SIDS}->{$sid}->{DESCSTACK}->[$#{$self->{SIDS}->{$sid}->{DESCSTACK}}-1] .= "${id},";
   }
 }
 
@@ -105,10 +147,9 @@ sub _handle_cdata {
   my ($sax, $cdata) = @_;
   my $sid = $sax->getSID();
 
-  $self->debug(2,"_handle_cdata: sid($sid) sax($sax) cdata($cdata)")
-    unless (ref($self) eq "XML::Stream::Parser");
+  $self->debug(2,"_handle_cdata: sid($sid) sax($sax) cdata($cdata)");
 
-  return if ($#{$self->{SIDS}->{$sid}->{IDSTACK}} == -1);
+  return if ($#{$self->{SIDS}->{$sid}->{IDSTACK}} == 0);
 
   my $id = $self->{SIDS}->{$sid}->{IDSTACK}->[$#{$self->{SIDS}->{$sid}->{IDSTACK}}];
 
@@ -116,8 +157,7 @@ sub _handle_cdata {
   $unicode->utf8($cdata);
   $cdata = $unicode->latin1;
 
-  $self->debug(2,"_handle_cdata: sax($sax) cdata($cdata)")
-    unless (ref($self) eq "XML::Stream::Parser");
+  $self->debug(2,"_handle_cdata: sax($sax) cdata($cdata)");
 
   $self->{SIDS}->{$sid}->{hash}->{"${id}-data"} = $cdata;
 }
@@ -136,26 +176,31 @@ sub _handle_close {
   my ($sax, $tag) = @_;
   my $sid = $sax->getSID();
 
-  $self->debug(2,"_handle_close: sid($sid) sax($sax) tag($tag)")
-    unless (ref($self) eq "XML::Stream::Parser");
+  $self->debug(2,"_handle_close: sid($sid) sax($sax) tag($tag)");
 
   my $id = pop(@{$self->{SIDS}->{$sid}->{IDSTACK}});
   my $desc = pop(@{$self->{SIDS}->{$sid}->{DESCSTACK}});
 
   $self->{SIDS}->{$sid}->{DESCSTACK}->[$#{$self->{SIDS}->{$sid}->{DESCSTACK}}] .= $desc unless ($#{$self->{SIDS}->{$sid}->{DESCSTACK}} == -1);
 
-  if ($desc ne "") {
+  if (defined($desc) && ($desc ne "")) {
     $desc =~ s/\,$//;
-    $self->{SIDS}->{$sid}->{hash}->{"$id-desc"} = $desc;
+    $self->{SIDS}->{$sid}->{hash}->{"${id}-desc"} = $desc;
   }
 
-  $self->debug(2,"_handle_close: check(",$#{$self->{SIDS}->{$sid}->{IDSTACK}},")")
-    unless (ref($self) eq "XML::Stream::Parser");
+  $self->debug(2,"_handle_close: check(",$#{$self->{SIDS}->{$sid}->{IDSTACK}},")");
 
-  if($#{$self->{SIDS}->{$sid}->{IDSTACK}} == -1) {
+  if ($#{$self->{SIDS}->{$sid}->{IDSTACK}} == -1) {
+    if ($self->{SIDS}->{$sid}->{rootTag} ne $tag) {
+      $self->{SIDS}->{$sid}->{streamerror} = "Root tag mis-match: <$self->{SIDS}->{$sid}->{rootTag}> ... </$tag>\n";
+    }
+    return;
+  }
+
+  if($#{$self->{SIDS}->{$sid}->{IDSTACK}} < 1) {
     if($self->{SIDS}->{$sid}->{hash}->{"${id}-tag"} eq "stream:error") {
       $self->{SIDS}->{$sid}->{streamerror} =
-	$self->{SIDS}->{$sid}->{hash}->{"$id-data"};
+	$self->{SIDS}->{$sid}->{hash}->{"${id}-data"};
     } else {
       if (ref($self) ne "XML::Stream::Parser") {
 	&{$self->{CB}->{node}}($sid,$self->{SIDS}->{$sid}->{hash});
@@ -261,6 +306,7 @@ sub SetXMLData {
 #                                 the parameters
 #                     "count" - returns the number of things that match
 #                               the arguments
+#                     "tag" - returns the root tag of this tree
 #              XMLTree - pointer to XML::Parser::Tree object
 #              tag     - tag to pull data from.  If blank then the top level
 #                        tag is accessed.
@@ -277,6 +323,7 @@ sub SetXMLData {
 sub GetXMLData {
   my ($type,$XMLTree,$tag,$attrib,$value) = @_;
 
+  $tag = "" if !defined($tag);
   $attrib = "" if !defined($attrib);
   $value = "" if !defined($value);
 
@@ -377,14 +424,14 @@ sub GetXMLData {
       return $count;
     }
   } else {
-    #---------------------------------------------------------------------
+    #-------------------------------------------------------------------------
     # This is the root tag, so handle things a level up.
-    #---------------------------------------------------------------------
+    #-------------------------------------------------------------------------
 
-    #---------------------------------------------------------------------
+    #-------------------------------------------------------------------------
     # Return the raw CDATA value without mark ups, or the value of the
     # requested attribute.
-    #---------------------------------------------------------------------
+    #-------------------------------------------------------------------------
     if ($type eq "value") {
       if ($attrib eq "") {
 	return $$XMLTree{$$XMLTree{root}."-data"};
@@ -392,25 +439,25 @@ sub GetXMLData {
       return $$XMLTree{$$XMLTree{root}."-att-".$attrib}
         if (exists $$XMLTree{$$XMLTree{root}."-att-".$attrib});
     }
-    #---------------------------------------------------------------------
+    #-------------------------------------------------------------------------
     # Return a pointer to a new XML::Parser::Tree object that has the
     # requested tag as the root tag.
-    #---------------------------------------------------------------------
+    #-------------------------------------------------------------------------
     if ($type eq "tree") {
       my %hash =  %{$XMLTree};
       return %hash;
     }
 
-    #---------------------------------------------------------------------
+    #-------------------------------------------------------------------------
     # Return the 1 if the specified attribute exists in the root tag.
-    #---------------------------------------------------------------------
+    #-------------------------------------------------------------------------
     if ($type eq "existence") {
       return 1 if (($attrib ne "") && exists($$XMLTree{$$XMLTree{root}."-att-".$attrib}));
     }
 
-    #---------------------------------------------------------------------
+    #-------------------------------------------------------------------------
     # Return the attribute hash that matches this tag
-    #---------------------------------------------------------------------
+    #-------------------------------------------------------------------------
     if ($type eq "attribs") {
       my %hash;
       foreach my $att (grep { /^$$XMLTree{root}-att-/; } keys (%{$XMLTree})) {
@@ -418,6 +465,12 @@ sub GetXMLData {
 	$hash{$name} = $$XMLTree{$att};
       }
       return %hash;
+    }
+    #-------------------------------------------------------------------------
+    # Return the tag of this node
+    #-------------------------------------------------------------------------
+    if ($type eq "tag") {
+      return $$XMLTree{$$XMLTree{root}."-tag"};
     }
   }
   #---------------------------------------------------------------------------
@@ -453,7 +506,7 @@ sub BuildXML {
     $str .= &XML::Stream::EscapeXML($$hash{"${id}-data"})
       if exists($$hash{"${id}-data"});
     if (exists($$hash{"${id}-child"})) {
-      foreach my $child (sort {$a cmp $b} split(",",$$hash{"${id}-child"})) {
+      foreach my $child (sort {$a <=> $b} split(",",$$hash{"${id}-child"})) {
 	$str .= &XML::Stream::Hash::BuildXML($child,$hash);
       }
     }
@@ -464,5 +517,51 @@ sub BuildXML {
 
   return $str;
 }
+
+
+
+##############################################################################
+#
+# XML2Config - takes an XML data tree and turns it into a hash of hashes.
+#              This only works for certain kinds of XML trees like this:
+#
+#                <foo>
+#                  <bar>1</bar>
+#                  <x>
+#                    <y>foo</y>
+#                  </x>
+#                  <z>5</z>
+#                </foo>
+#
+#              The resulting hash would be:
+#
+#                $hash{bar} = 1;
+#                $hash{x}->{y} = "foo";
+#                $hash{z} = 5;
+#
+#              Good for config files.
+#
+##############################################################################
+sub XML2Config {
+  my ($XMLHash) = @_;
+
+  my %hash;
+  my $root = $XMLHash->{root};
+  foreach my $child (&XML::Stream::GetXMLData("tree array",$XMLHash,"*")) {
+    if (exists($XMLHash->{$child."-data"}) && !($XMLHash->{$child."-data"} =~ /^\s*$/)) {
+      $hash{$XMLHash->{$child."-tag"}} = $XMLHash->{$child."-data"};
+    } else {
+      $XMLHash->{root} = $child;
+      if (&XML::Stream::GetXMLData("count",$XMLHash,$XMLHash->{$child."-tag"}) > 1) {
+	push(@{$hash{$XMLHash->{$child."-tag"}}},&XML::Stream::XML2Config($XMLHash));
+      } else {
+	$hash{$XMLHash->{$child."-tag"}} = &XML::Stream::XML2Config($XMLHash);
+      }
+      $XMLHash->{root} = $root;
+    }
+  }
+  return \%hash;
+}
+
 
 1;

@@ -162,6 +162,9 @@ sub new {
   my %args;
   while($#_ >= 0) { $args{ lc pop(@_) } = pop(@_); }
 
+  $self->{DEBUGLEVEL} = 1;
+  $self->{DEBUGLEVEL} = $args{debuglevel} if exists($args{debuglevel});
+
   if (exists($args{debugfh}) && ($args{debugfh} ne "")) {
     $self->{DEBUGFILE} = $args{debugfh};
     $self->{DEBUG} = 1;
@@ -201,7 +204,7 @@ sub new {
   my $fullname = gethostbyaddr($address,AF_INET) || 
     die("Cannot re-resolve $hostname: $!");
 
-  $self->debug("XML::Stream: new: hostname = ($fullname)");
+  $self->debug(1,"new: hostname = ($fullname)");
 
   #---------------------------------------------------------------------------
   # Setup the defaults that the module will work with.
@@ -234,6 +237,19 @@ sub new {
   #---------------------------------------------------------------------------
   $self->{NODES} = ();
 
+  #---------------------------------------------------------------------------
+  # A storage place for when we don't have a callback registered and we need
+  # to stockpile the nodes we receive until Process is called and we return 
+  # them.
+  #---------------------------------------------------------------------------
+  $self->{XML} = "";
+
+  #---------------------------------------------------------------------------
+  # Flag to determine if we are alrady parsing and need to store the incoming
+  # XML until later.
+  #---------------------------------------------------------------------------
+  $self->{PARSING} = 0;
+
   return $self;
 }
 
@@ -245,9 +261,10 @@ sub new {
 ###########################################################################
 sub debug {
   my $self = shift;
-  return if !($self->{DEBUG});
+  my ($limit,@args) = @_;
+  return if ($limit > $self->{DEBUGLEVEL});
   my $fh = $self->{DEBUGFILE};
-  print $fh "@_\n";
+  print $fh "XML::Stream: @args\n";
 }
 
 
@@ -338,13 +355,7 @@ sub Connect {
   while($self->{STATUS} == 0) {
     if ($self->{SERVER}{select}->can_read(0)) {
       $buff = $self->Read();
-      $self->{SERVER}{parser}->parse_more($buff);
-      if ($STREAMERROR ne "") {
-	$self->SetErrorCode($STREAMERROR);
-	return;
-      }	
-
-      # ToDo: we need to try/catch expat parsing errors here, no?
+      return unless ($self->ParseStream($buff) == 1);
     } else {
       if ($timeout ne "") {
 	$timeout -= (time() - $timeStart);
@@ -389,8 +400,6 @@ sub Process {
   my $self = shift;
   my($timeout) = @_;
   $timeout = "" if !defined($timeout);
-
-  my($buff);
   
   #---------------------------------------------------------------------------
   # We need to keep track of what's going on in the function and tell the
@@ -416,15 +425,12 @@ sub Process {
   my $timeStart = time();
   while($block == 1) {
     if($self->{SERVER}{select}->can_read(0)) {
+      my $buff;
       while($self->{SERVER}{select}->can_read(0)) {
 	$status = 1;
 	$self->{STATUS} = -1 if (!defined($buff = $self->Read()));
-	$self->{SERVER}{parser}->parse_more($buff);
-	if ($STREAMERROR ne "") {
-	  $self->SetErrorCode($STREAMERROR);
-	  return;
-	}
 	return unless($self->{STATUS} == 1);
+	return unless($self->ParseStream($buff) == 1);
       }
       $block = 0;
     }
@@ -436,8 +442,10 @@ sub Process {
       $block = 0 if ($timeout <= 0);
     }
     select(undef,undef,undef,.25);
+    
+    $block = 1 if $self->{SERVER}{select}->can_read(0);
   }
-  
+
   #---------------------------------------------------------------------------
   # If the Select has an error then shut this party down.
   #---------------------------------------------------------------------------
@@ -454,6 +462,68 @@ sub Process {
     return $status; # signal that we're ok
   }
 }
+
+
+##############################################################################
+#
+# ParseStream - takes the incoming stream and makes sure that only full
+#               XML tags gets passed to the parser.  If a full tag has not
+#               read yet, then the Stream saves the incomplete part and
+#               sends the rest to the parser.
+#
+##############################################################################
+sub ParseStream {
+  my $self = shift;
+  my ($stream) = @_;
+
+  $self->debug(2,"ParseStream: incoming($stream) current($self->{XML})");
+
+  $self->{XML} .= $stream;
+
+  if ($self->{PARSING} == 1) {
+    $self->debug(2,"ParseStream: we are in the middle of a parse!!!!!  BAIL!!!!!");
+    return 1;
+  }
+
+  $self->{PARSING} = 1;
+
+  my $goodXML = "";
+  my $badXML;
+
+  while($badXML ne $self->{XML}) {  
+    ($goodXML,$badXML) = ($self->{XML} =~ /^([\w\W]+)(\<[^\>]+)$/);
+    
+    $self->debug(2,"ParseStream: goodXML($goodXML) badXML($badXML)");
+    
+    if (($goodXML eq "") && ($badXML eq "")) {
+      $goodXML = $self->{XML};
+      $self->{XML} = "";
+    } else {
+      $self->{XML} = $badXML;
+    }
+    
+    $self->debug(2,"ParseStream: parse($goodXML) save($self->{XML})");
+    
+    $self->{SERVER}{parser}->parse_more($goodXML);
+    
+    if ($STREAMERROR ne "") {
+      $self->debug(2,"ParseStream: ERROR($STREAMERROR)");
+      $self->SetErrorCode($STREAMERROR);
+      return;
+    }
+    
+    $self->debug(2,"ParseStream: test badXML($badXML) current($self->{XML})");
+    if ($badXML ne $self->{XML}) {
+      $self->debug(2,"ParseStream: someone tried to parse while we were running");
+      $self->debug(2,"ParseStream: let's run again to clear out that XML");
+    }
+  }	
+  $self->debug(2,"ParseStream: returning");
+    
+  $self->{PARSING} = 0;
+  return 1;
+}
+
 
 
 ##############################################################################
@@ -502,7 +572,7 @@ sub GetSock {
 ##############################################################################
 sub Send {
   my $self = shift;
-  $self->debug("XML::Stream: Send: (@_)");
+  $self->debug(1,"Send: (@_)");
   $self->{SERVER}{sock}->print(@_) || return;
   return 1;
 }
@@ -517,9 +587,9 @@ sub Read {
   my $self = shift;
   my $buff;
   my $status = $self->{SERVER}{sock}->sysread($buff,1024);
-  $self->debug("XML::Stream: Read: ($buff)");
+  $self->debug(1,"Read: ($buff)");
   return $buff unless $status == 0;
-  $self->debug("XML::Stream: Read: ERROR");
+  $self->debug(1,"Read: ERROR");
   return;
 }
 
@@ -561,6 +631,8 @@ sub _handle_root {
   my $self = shift;
   my ($expat, $tag, %att) = @_;
 
+  $self->debug(2,"_handle_root: expat($expat) tag($tag) att(",%att,")");
+  
   #---------------------------------------------------------------------------
   # Make sure we are receiving a valid stream on the same namespace.
   #---------------------------------------------------------------------------
@@ -596,6 +668,8 @@ sub _handle_element {
   my $self = shift;
   my ($expat, $tag, %att) = @_;
 
+  $self->debug(2,"_handle_element: expat($expat) tag($tag) att(",%att,")");
+
   my @NEW;
   if($#{$self->{TREE}} < 0) {
     push @{$self->{TREE}}, $tag;
@@ -616,10 +690,17 @@ sub _handle_element {
 sub _handle_cdata {
   my $self = shift;
   my ($expat, $cdata) = @_;
+
+  $self->debug(2,"_handle_cdata: expat($expat) cdata($cdata)");
+  
   my $pos = $#{$self->{TREE}};
+  $self->debug(2,"_handle_cdata: pos($pos)");
+
   if ($pos > 0 && $self->{TREE}[$pos - 1] eq "0") {
+    $self->debug(2,"_handle_cdata: append cdata");
     $self->{TREE}[$pos - 1] .= $cdata;
   } else {
+    $self->debug(2,"_handle_cdata: new cdata");
     push @{$self->{TREE}[$#{$self->{TREE}}]}, 0;
     push @{$self->{TREE}[$#{$self->{TREE}}]}, $cdata;
   }	
@@ -636,17 +717,22 @@ sub _handle_cdata {
 sub _handle_close {
   my $self = shift;
   my ($expat, $tag) = @_;
+
+  $self->debug(2,"_handle_close: expat($expat) tag($tag)");
   
   my $CLOSED = pop @{$self->{TREE}};
   
+  $self->debug(2,"_handle_close: check(",$#{$self->{TREE}},")");
+
   if($#{$self->{TREE}} < 1) {
     push @{$self->{TREE}}, $CLOSED;
 
     if($self->{TREE}->[0] eq "stream:error") {
       $STREAMERROR = $self->{TREE}[1]->[2];
     } else {
-      &{$self->{NODE}}(@{$self->{TREE}});
+      my @tree = @{$self->{TREE}};
       $self->{TREE} = [];
+      &{$self->{NODE}}(@tree);
     }
   } else {
     push @{$self->{TREE}[$#{$self->{TREE}}]}, $CLOSED;

@@ -1,3 +1,13 @@
+1.0c
+====
+  - I think I got the bug in ParseStream that removes the parse coming in
+    while a parse is already in progress.
+  - Fixed major bug in Process.  If you got a tag in the middle of the tag
+    it would cause an XML error.
+  - Also, if another parse came in during another parse, the second parse
+    tree would get built under the current parse tree and everything would
+    grind to a halt.
+
 1.0b
 ====
   - Improved error handling by creating GetErrorCode and SetErrorCode.

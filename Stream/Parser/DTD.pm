@@ -62,7 +62,7 @@ if ($] >= 5.006) {
   $UNICODE = 0;
 }
 
-$VERSION = "1.13";
+$VERSION = "1.14";
 
 sub new {
   my $self = { };

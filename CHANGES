@@ -1,3 +1,15 @@
+1.14
+====
+  - Fixed slow execution due to a sleep where there shouldn't be
+    a sleep.
+  - Added OpenFile() way to parse a stream.  It takes the same kind of
+    arguments that open() takes, so you can parse the stream output from
+    a command or a file and pretend that it's a stream.  It will ignore
+    the outer most tag and pretend that it's a <stream:stream/> tag.
+  - Fixed documentation to reflect the SID.
+  - Get "value array" with attrib fetches the same attrib from the
+    macthing nodes.
+
 1.13
 ====
   - Fixed bug in Parser with entities getting split by reads and

@@ -45,7 +45,7 @@ it under the same terms as Perl itself.
 
 use vars qw($VERSION);
 
-$VERSION = "1.13";
+$VERSION = "1.14";
 
 ##############################################################################
 #
@@ -318,7 +318,12 @@ sub GetXMLData {
 	  # mark up tags for the requested tags.
 	  #-------------------------------------------------------------------
 	  if ($type eq "value array") {
-	    push(@array,$$XMLTree{$child."-data"});
+	    if ($attrib eq "") {
+	      push(@array,$$XMLTree{$child."-data"});
+	    } else {
+	      push(@array,$$XMLTree{$child."-att-".$attrib})
+		if (exists $$XMLTree{$child."-att-".$attrib});
+	    }
 	  }
 	  #-------------------------------------------------------------------
 	  # Return a pointer to a new XML::Stream::Hash object that has the

@@ -45,7 +45,7 @@ it under the same terms as Perl itself.
 
 use vars qw($VERSION);
 
-$VERSION = "1.13";
+$VERSION = "1.14";
 
 ##############################################################################
 #
@@ -323,17 +323,22 @@ sub GetXMLData {
         # mark up tags for the requested tags.
         #---------------------------------------------------------------------
 	if ($type eq "value array") {
-	  my $str = "";
-	  my $next = 0;
-	  my $index;
-	  foreach $index (1..$#{$$XMLTree[1]->[$child+1]}) {
-	    if ($next == 1) { $next = 0; next; }
-	    if ($$XMLTree[1]->[$child+1]->[$index] eq "0") {
-	      $str .= $$XMLTree[1]->[$child+1]->[$index+1];
-	      $next = 1;
+	  if ($attrib eq "") {
+	    my $str = "";
+	    my $next = 0;
+	    my $index;
+	    foreach $index (1..$#{$$XMLTree[1]->[$child+1]}) {
+	      if ($next == 1) { $next = 0; next; }
+	      if ($$XMLTree[1]->[$child+1]->[$index] eq "0") {
+		$str .= $$XMLTree[1]->[$child+1]->[$index+1];
+		$next = 1;
+	      }
 	    }
+	    push(@array,$str);
+	  } else {
+	    push(@array,$$XMLTree[1]->[$child+1]->[0]->{$attrib})
+	      if (exists $$XMLTree[1]->[$child+1]->[0]->{$attrib});
 	  }
-	  push(@array,$str);
 	}
         #---------------------------------------------------------------------
 	# Return a pointer to a new XML::Parser::Tree object that has the

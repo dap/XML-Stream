@@ -97,16 +97,30 @@ XML::Stream - Creates and XML Stream connection and parses return data
                                     variables http_proxy or https_proxy
                                     are set.  ssl specifies if an SLL
                                     socket should be used for encrypted
-                                    communications.
+                                    communications.  This function returns
+                                    the same hash from GetRoot() below.
+                                    Make sure you get the SID (Session ID)
+                                    since you have to use it to call most
+                                    other functions in here.
 
-  Disconnect() - sends the proper closing XML tag and closes the socket
-                 down.
+
+  OpenFile(string) - opens a filehandle to the argument specified, and
+                     pretends that it is a stream.  It will ignore the
+                     outer tag, and not check if it was a <stream:stream/>.
+                     This is useful for writing a program that has to
+                     parse any XML file that is basically made up of
+                     small packets (like RDF).
+
+  Disconnect(sid) - sends the proper closing XML tag and closes the
+                    specified socket down.
 
   Process(integer) - waits for data to be available on the socket.  If
                      a timeout is specified then the Process function
                      waits that period of time before returning nothing.
                      If a timeout period is not specified then the
-                     function blocks until data is received.
+                     function blocks until data is received.  The function
+                     returns a hash with session ids as the key, and
+                     status values or data as the hash values.
 
   SetCallBacks(node=>function,   - sets the callback that should be
                update=>function)   called in various situations.  node
@@ -116,25 +130,27 @@ XML::Stream - Creates and XML Stream connection and parses return data
                                    blocking waiting for data, but you want
                                    your original code to be updated.
 
-  GetRoot() - returns the attributes that the stream:stream tag sent by
-              the other end listed in a hash.
+  GetRoot(sid) - returns the attributes that the stream:stream tag sent by
+                 the other end listed in a hash for the specified session.
 
-  GetSock() - returns a pointer to the IO::Socket object.
+  GetSock(sid) - returns a pointer to the IO::Socket object for the
+                 specified session.
 
-  Send(string) - sends the string over the connection as is.  This
-                 does no checking if valid XML was sent or not.  Best
-                 behavior when sending information.
+  Send(sid,    - sends the string over the specified connection as is.
+       string)   This does no checking if valid XML was sent or not.
+                 Best behavior when sending information.
 
-  GetErrorCode() - returns a string that will hopefully contain some
-                   useful information about why Process or Connect
-                   returned an undef to you.
+  GetErrorCode(sid) - returns a string for the specified session that
+                      will hopefully contain some useful information
+                      about why Process or Connect returned an undef
+                      to you.
 
 =head1 EXAMPLES
 
   ##########################
   # simple example
 
-  use XML::Stream;
+  use XML::Stream qw( Tree );
 
   $stream = new XML::Stream;
 
@@ -158,7 +174,7 @@ XML::Stream - Creates and XML Stream connection and parses return data
   ###########################
   # example using a handler
 
-  use XML::Stream;
+  use XML::Stream qw( Tree );
 
   $stream = new XML::Stream;
   $stream->SetCallBacks(node=>\&noder);
@@ -175,6 +191,7 @@ XML::Stream - Creates and XML Stream connection and parses return data
 
   sub noder
   {
+    my $sid = shift;
     my $node = shift;
     # do something with $node
   }
@@ -206,7 +223,7 @@ use POSIX;
 use Unicode::String;
 use vars qw($VERSION $PAC $SSL);
 
-$VERSION = "1.13";
+$VERSION = "1.14";
 
 use XML::Stream::Namespace;
 ($XML::Stream::Namespace::VERSION < $VERSION) &&
@@ -395,7 +412,7 @@ sub Listen {
   $self->debug(1,"Listen: start");
 
   if ($self->{SIDS}->{$serverid}->{namespace} eq "") {
-    $self->SetErrorCode("$serverid","Namespace not specified");
+    $self->SetErrorCode($serverid,"Namespace not specified");
     return;
   }
 
@@ -587,7 +604,6 @@ sub nonblock {
   my $socket = shift;
   my $flags;
 
-#  $socket->autoflush(1);
   $flags = fcntl($socket, F_GETFL, 0)
     or die "Can't get flags for socket: $!\n";
   fcntl($socket, F_SETFL, $flags | O_NONBLOCK)
@@ -993,6 +1009,84 @@ sub Disconnect {
 
 ##############################################################################
 #
+# OpenFile - starts the stream by opening a file and setting it up so that
+#            Process reads from the filehandle to get the incoming stream.
+#
+##############################################################################
+sub OpenFile {
+  my $self = shift;
+  my $file = shift;
+
+  $self->debug(1,"OpenFile: file($file)");
+
+  $self->{SIDS}->{newconnection}->{connectiontype} = "file";
+
+  $self->{SIDS}->{newconnection}->{sock} = new FileHandle($file);
+  $self->{SIDS}->{newconnection}->{sock}->autoflush(1);
+
+  #---------------------------------------------------------------------------
+  # Create the XML::Stream::Parser and register our callbacks
+  #---------------------------------------------------------------------------
+  $self->{SIDS}->{newconnection}->{parser} =
+    new XML::Stream::Parser(sid=>"newconnection",
+			    (($self->{DATASTYLE} eq "tree") ?
+			     (Handlers=>{
+					 startElement=>sub{ $self->_handle_root(@_) },
+					 endElement=>sub{ &XML::Stream::Tree::_handle_close($self,@_) },
+					 characters=>sub{ &XML::Stream::Tree::_handle_cdata($self,@_) }
+					}
+			     ) :
+			     ()
+			    ),
+			    (($self->{DATASTYLE} eq "hash") ?
+			     (Handlers=>{
+					 startElement=>sub{ $self->_handle_root(@_) },
+					 endElement=>sub{ &XML::Stream::Hash::_handle_close($self,@_) },
+					 characters=>sub{ &XML::Stream::Hash::_handle_cdata($self,@_) }
+					}
+			     ) :
+			     ()
+			    ),
+			   );
+
+  $self->{SIDS}->{newconnection}->{select} =
+    new IO::Select($self->{SIDS}->{newconnection}->{sock});
+
+  $self->{SELECT} = new IO::Select($self->{SIDS}->{newconnection}->{sock});
+
+
+  my $buff = "";
+  my $timeStart = time();
+  while($self->{SIDS}->{newconnection}->{status} == 0) {
+    $self->debug(5,"OpenFile: can_read(",join(",",$self->{SIDS}->{newconnection}->{select}->can_read(0)),")");
+    if ($self->{SIDS}->{newconnection}->{select}->can_read(0)) {
+      $self->{SIDS}->{newconnection}->{status} = -1
+	unless defined($buff = $self->Read("newconnection"));
+      return unless($self->{SIDS}->{newconnection}->{status} == 0);
+      return unless($self->ParseStream("newconnection",$buff) == 1);
+    }
+
+    return if($self->{SIDS}->{newconnection}->{select}->has_exception(0));
+  }
+  return if($self->{SIDS}->{newconnection}->{status} != 1);
+
+
+  my $sid = $self->NewSID();
+  foreach my $key (keys(%{$self->{SIDS}->{newconnection}})) {
+    $self->{SIDS}->{$sid}->{$key} = $self->{SIDS}->{newconnection}->{$key};
+  }
+  $self->{SIDS}->{$sid}->{parser}->setSID($sid);
+
+  $self->{SOCKETS}->{$self->{SIDS}->{newconnection}->{sock}} = $sid;
+
+  delete($self->{SIDS}->{newconnection});
+
+  return $sid;
+}
+
+
+##############################################################################
+#
 # Process - checks for data on the socket and returns a status code depending
 #           on if there was data or not.  If a timeout is not defined in the
 #           call then the timeout defined in Connect() is used.  If a timeout
@@ -1019,6 +1113,7 @@ sub Process {
   #---------------------------------------------------------------------------
   my %status;
   foreach my $sid (keys(%{$self->{SIDS}})) {
+    next if ($sid eq "default");
     $self->debug(5,"Process: initialize sid($sid) status to 0");
     $status{$sid} = 0;
   }
@@ -1077,7 +1172,7 @@ sub Process {
 	select(undef,undef,undef,.25);
       }
     } else {
-      select(undef,undef,undef,.25);
+      select(undef,undef,undef,.25) if ($block == 1);
     }
     $self->debug(4,"Process: timeout($timeout)");
 
@@ -1257,6 +1352,12 @@ sub Send {
 
   $self->debug(3,"Send: socket($self->{SIDS}->{$sid}->{sock})");
 
+  if (!defined($self->{SIDS}->{$sid}->{sock})) {
+    $self->{SIDS}->{$sid}->{status} = -1;
+    $self->SetErrorCode($sid,"Socket does not defined.");
+    return;
+  }
+
   $self->{SIDS}->{$sid}->{sock}->flush();
 
   if ($self->{SIDS}->{$sid}->{select}->can_write(0)) {
@@ -1297,13 +1398,23 @@ sub Read {
   $self->debug(3,"Read: connectionType($self->{SIDS}->{$sid}->{connectiontype})");
   $self->debug(3,"Read: socket($self->{SIDS}->{$sid}->{sock})");
 
+  return if ($self->{SIDS}->{$sid}->{status} == -1);
+
+  if (!defined($self->{SIDS}->{$sid}->{sock})) {
+    $self->{SIDS}->{$sid}->{status} = -1;
+    $self->SetErrorCode($sid,"Socket does not defined.");
+    return;
+  }
+
   $self->{SIDS}->{$sid}->{sock}->flush();
 
   $status = $self->{SIDS}->{$sid}->{sock}->sysread($buff,POSIX::BUFSIZ)
     if (($self->{SIDS}->{$sid}->{connectiontype} eq "tcpip") ||
-	($self->{SIDS}->{$sid}->{connectiontype} eq "http"));
+	($self->{SIDS}->{$sid}->{connectiontype} eq "http") ||
+	($self->{SIDS}->{$sid}->{connectiontype} eq "file"));
   $status = sysread(STDIN,$buff,1024)
     if ($self->{SIDS}->{$sid}->{connectiontype} eq "stdinout");
+
   $buff =~ s/^HTTP[\S\s]+\n\n// if ($self->{SIDS}->{$sid}->{connectiontype} eq "http");
   $self->debug(1,"Read: buff($buff)");
   $self->debug(3,"Read: status($status)") if defined($status);
@@ -1363,17 +1474,21 @@ sub _handle_root {
 
   $self->debug(2,"_handle_root: sid($sid) sax($sax) tag($tag) att(",%att,")");
 
-  #---------------------------------------------------------------------------
-  # Make sure we are receiving a valid stream on the same namespace.
-  #---------------------------------------------------------------------------
-  $self->{SIDS}->{$sid}->{status} =
-    ((($tag eq "stream:stream") &&
-      exists($att{'xmlns'}) &&
-      ($att{'xmlns'} eq $self->{SIDS}->{$self->{SIDS}->{$sid}->{serverid}}->{namespace})
-     ) ?
-     1 :
-     -1
-    );
+  if ($self->{SIDS}->{$sid}->{connectiontype} ne "file") {
+    #-------------------------------------------------------------------------
+    # Make sure we are receiving a valid stream on the same namespace.
+    #-------------------------------------------------------------------------
+    $self->{SIDS}->{$sid}->{status} =
+      ((($tag eq "stream:stream") &&
+	exists($att{'xmlns'}) &&
+	($att{'xmlns'} eq $self->{SIDS}->{$self->{SIDS}->{$sid}->{serverid}}->{namespace})
+       ) ?
+       1 :
+       -1
+      );
+  } else {
+    $self->{SIDS}->{$sid}->{status} = 1;
+  }
 
   #---------------------------------------------------------------------------
   # Get the root tag attributes and save them for later.  You never know when

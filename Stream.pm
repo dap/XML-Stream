@@ -147,7 +147,7 @@ use IO::Select;
 use XML::Parser;
 use vars qw($VERSION $STREAMERROR);
 
-$VERSION = "1.0";
+$VERSION = "1.04";
 $STREAMERROR = "";
 
 use XML::Stream::Namespace;

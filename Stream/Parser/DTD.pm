@@ -51,634 +51,719 @@ it under the same terms as Perl itself.
 
 =cut
 
-require 5.003;
 use strict;
-use vars qw($VERSION $UNICODE);
+use vars qw($VERSION);
 
-if ($] >= 5.006) {
-  $UNICODE = 1;
-} else {
-  require Unicode::String;
-  $UNICODE = 0;
-}
+$VERSION = "1.16";
 
-$VERSION = "1.15";
+sub new
+{
+    my $self = { };
 
-sub new {
-  my $self = { };
+    bless($self);
 
-  bless($self);
+    my %args;
+    while($#_ >= 0) { $args{ lc pop(@_) } = pop(@_); }
 
-  my %args;
-  while($#_ >= 0) { $args{ lc pop(@_) } = pop(@_); }
+    $self->{URI} = $args{uri};
 
-  $self->{URI} = $args{uri};
+    $self->{PARSING} = 0;
+    $self->{DOC} = 0;
+    $self->{XML} = "";
+    $self->{CNAME} = ();
+    $self->{CURR} = 0;
 
-  $self->{PARSING} = 0;
-  $self->{DOC} = 0;
-  $self->{XML} = "";
-  $self->{CNAME} = ();
-  $self->{CURR} = 0;
+    $self->{ENTITY}->{"&lt;"} = "<";
+    $self->{ENTITY}->{"&gt;"} = ">";
+    $self->{ENTITY}->{"&quot;"} = "\"";
+    $self->{ENTITY}->{"&apos;"} = "'";
+    $self->{ENTITY}->{"&amp;"} = "&";
 
-  $self->{ENTITY}->{"&lt;"} = "<";
-  $self->{ENTITY}->{"&gt;"} = ">";
-  $self->{ENTITY}->{"&quot;"} = "\"";
-  $self->{ENTITY}->{"&apos;"} = "'";
-  $self->{ENTITY}->{"&amp;"} = "&";
+    $self->{HANDLER}->{startDocument} = sub{ $self->startDocument(@_); };
+    $self->{HANDLER}->{endDocument} = sub{ $self->endDocument(@_); };
+    $self->{HANDLER}->{startElement} = sub{ $self->startElement(@_); };
+    $self->{HANDLER}->{endElement} = sub{ $self->endElement(@_); };
 
-  $self->{HANDLER}->{startDocument} = sub{ $self->startDocument(@_); };
-  $self->{HANDLER}->{endDocument} = sub{ $self->endDocument(@_); };
-  $self->{HANDLER}->{startElement} = sub{ $self->startElement(@_); };
-  $self->{HANDLER}->{endElement} = sub{ $self->endElement(@_); };
+    $self->{STYLE} = "debug";
 
-  $self->{STYLE} = "debug";
+    open(DTD,$args{uri});
+    my $dtd = join("",<DTD>);
+    close(DTD);
 
-  open(DTD,$args{uri});
-  my $dtd = join("",<DTD>);
-  close(DTD);
+    $self->parse($dtd);
 
-  $self->parse($dtd);
-
-  return $self;
+    return $self;
 }
 
 
-sub parse {
-  my $self = shift;
-  my $xml = shift;
+sub parse
+{
+    my $self = shift;
+    my $xml = shift;
 
-  while($xml =~ s/<\!--.*?-->//gs) {}
-  while($xml =~ s/\n//g) {}
+    while($xml =~ s/<\!--.*?-->//gs) {}
+    while($xml =~ s/\n//g) {}
 
-  $self->{XML} .= $xml;
+    $self->{XML} .= $xml;
 
-  return if ($self->{PARSING} == 1);
+    return if ($self->{PARSING} == 1);
 
-  $self->{PARSING} = 1;
+    $self->{PARSING} = 1;
 
-  if(!$self->{DOC} == 1) {
-    my $start = index($self->{XML},"<");
+    if(!$self->{DOC} == 1)
+    {
+        my $start = index($self->{XML},"<");
 
-    if (substr($self->{XML},$start,3) =~ /^<\?x$/i) {
-      my $close = index($self->{XML},"?>");
-      if ($close == -1) {
-	$self->{PARSING} = 0;
-	return;
-      }
-      $self->{XML} = substr($self->{XML},$close+2,length($self->{XML})-$close-2);
+        if (substr($self->{XML},$start,3) =~ /^<\?x$/i)
+        {
+            my $close = index($self->{XML},"?>");
+            if ($close == -1)
+            {
+                $self->{PARSING} = 0;
+                return;
+            }
+            $self->{XML} = substr($self->{XML},$close+2,length($self->{XML})-$close-2);
+        }
+
+        &{$self->{HANDLER}->{startDocument}}($self);
+        $self->{DOC} = 1;
     }
 
-    &{$self->{HANDLER}->{startDocument}}($self);
-    $self->{DOC} = 1;
-  }
+    while(1)
+    {
 
-  while(1) {
+        if (length($self->{XML}) == 0)
+        {
+            $self->{PARSING} = 0;
+            return;
+        }
 
-    if (length($self->{XML}) == 0) {
-      $self->{PARSING} = 0;
-      return;
+        my $estart = index($self->{XML},"<");
+        if ($estart == -1)
+        {
+            $self->{PARSING} = 0;
+            return;
+        }
+
+        my $close = index($self->{XML},">");
+        my $dtddata = substr($self->{XML},$estart+1,$close-1);
+        my $nextspace = index($dtddata," ");
+        my $attribs;
+
+        my $type = substr($dtddata,0,$nextspace);
+        $dtddata = substr($dtddata,$nextspace+1,length($dtddata)-$nextspace-1);
+        $nextspace = index($dtddata," ");
+
+        if ($type eq "!ENTITY")
+        {
+            $self->entity($type,$dtddata);
+        }
+        else
+        {
+            my $tag = substr($dtddata,0,$nextspace);
+            $dtddata = substr($dtddata,$nextspace+1,length($dtddata)-$nextspace-1);
+            $nextspace = index($dtddata," ");
+
+            $self->element($type,$tag,$dtddata) if ($type eq "!ELEMENT");
+            $self->attlist($type,$tag,$dtddata) if ($type eq "!ATTLIST");
+        }
+
+        $self->{XML} = substr($self->{XML},$close+1,length($self->{XML})-$close-1);
+        next;
+    }
+}
+
+
+sub startDocument
+{
+    my $self = shift;
+}
+
+
+sub endDocument
+{
+    my $self = shift;
+}
+
+
+sub entity
+{
+    my $self = shift;
+    my ($type, $data) = @_;
+
+    foreach my $entity (keys(%{$self->{ENTITY}}))
+    {
+        $data =~ s/$entity/$self->{ENTITY}->{$entity}/g;
     }
 
-    my $estart = index($self->{XML},"<");
-    if ($estart == -1) {
-      $self->{PARSING} = 0;
-      return;
+    my ($symbol,$tag,undef,$string) = ($data =~ /^\s*(\S+)\s+(\S+)\s+(\"|\')([^\3]*)\3\s*$/);
+    $self->{ENTITY}->{"${symbol}${tag}\;"} = $string;
+}
+
+sub element
+{
+    my $self = shift;
+    my ($type, $tag, $data) = @_;
+
+    foreach my $entity (keys(%{$self->{ENTITY}}))
+    {
+        $data =~ s/$entity/$self->{ENTITY}->{$entity}/g;
     }
 
-    my $close = index($self->{XML},">");
-    my $dtddata = substr($self->{XML},$estart+1,$close-1);
-    my $nextspace = index($dtddata," ");
-    my $attribs;
+    $self->{COUNTER}->{$tag} = 0 unless exists($self->{COUNTER}->{$tag});
 
-    my $type = substr($dtddata,0,$nextspace);
-    $dtddata = substr($dtddata,$nextspace+1,length($dtddata)-$nextspace-1);
-    $nextspace = index($dtddata," ");
+    $self->parsegrouping($tag,\$self->{ELEMENT}->{$tag},$data);
+    $self->flattendata(\$self->{ELEMENT}->{$tag});
 
-    if ($type eq "!ENTITY") {
-      $self->entity($type,$dtddata);
-    } else {
-      my $tag = substr($dtddata,0,$nextspace);
-      $dtddata = substr($dtddata,$nextspace+1,length($dtddata)-$nextspace-1);
-      $nextspace = index($dtddata," ");
+}
 
-      $self->element($type,$tag,$dtddata) if ($type eq "!ELEMENT");
-      $self->attlist($type,$tag,$dtddata) if ($type eq "!ATTLIST");
+
+sub flattendata
+{
+    my $self = shift;
+    my $dstr = shift;
+
+    if ($$dstr->{type} eq "list")
+    {
+        foreach my $index (0..$#{$$dstr->{list}})
+        {
+            $self->flattendata(\$$dstr->{list}->[$index]);
+        }
+
+        if (!exists($$dstr->{repeat}) && ($#{$$dstr->{list}} == 0))
+        {
+            $$dstr = $$dstr->{list}->[0];
+        }
+    }
+}
+
+sub parsegrouping
+{
+    my $self = shift;
+    my ($tag,$dstr,$data) = @_;
+
+    $data =~ s/^\s*//;
+    $data =~ s/\s*$//;
+
+    if ($data =~ /[\*\+\?]$/)
+    {
+        ($$dstr->{repeat}) = ($data =~ /(.)$/);
+        $data =~ s/.$//;
     }
 
-    $self->{XML} = substr($self->{XML},$close+1,length($self->{XML})-$close-1);
-    next;
-  }
+    if ($data =~ /^\(.*\)$/)
+    {
+        my ($seperator) = ($data =~ /^\(\s*\S+\s*(\,|\|)/);
+        $$dstr->{ordered} = "yes" if ($seperator eq ",");
+        $$dstr->{ordered} = "no" if ($seperator eq "|");
+
+        my $count = 0;
+        $$dstr->{type} = "list";
+        foreach my $grouping ($self->groupinglist($data,$seperator))
+        {
+            $self->parsegrouping($tag,\$$dstr->{list}->[$count],$grouping);
+            $count++;
+        }
+    }
+    else
+    {
+        $$dstr->{type} = "element";
+        $$dstr->{element} = $data;
+        $self->{COUNTER}->{$data} = 0 unless exists($self->{COUNTER}->{$data});
+        $self->{COUNTER}->{$data}++;
+        $self->{CHILDREN}->{$tag}->{$data} = 1;
+    }
 }
 
 
-sub startDocument {
-  my $self = shift;
-}
+sub attlist
+{
+    my $self = shift;
+    my ($type, $tag, $data) = @_;
 
-
-sub endDocument {
-  my $self = shift;
-}
-
-
-sub entity {
-  my $self = shift;
-  my ($type, $data) = @_;
-
-  foreach my $entity (keys(%{$self->{ENTITY}})) {
-    $data =~ s/$entity/$self->{ENTITY}->{$entity}/g;
-  }
-
-  my ($symbol,$tag,undef,$string) = ($data =~ /^\s*(\S+)\s+(\S+)\s+(\"|\')([^\3]*)\3\s*$/);
-  $self->{ENTITY}->{"${symbol}${tag}\;"} = $string;
-}
-
-sub element {
-  my $self = shift;
-  my ($type, $tag, $data) = @_;
-
-  foreach my $entity (keys(%{$self->{ENTITY}})) {
-    $data =~ s/$entity/$self->{ENTITY}->{$entity}/g;
-  }
-
-  $self->{COUNTER}->{$tag} = 0 unless exists($self->{COUNTER}->{$tag});
-
-  $self->parsegrouping($tag,\$self->{ELEMENT}->{$tag},$data);
-  $self->flattendata(\$self->{ELEMENT}->{$tag});
-
-}
-
-
-sub flattendata {
-  my $self = shift;
-  my $dstr = shift;
-
-  if ($$dstr->{type} eq "list") {
-    foreach my $index (0..$#{$$dstr->{list}}) {
-      $self->flattendata(\$$dstr->{list}->[$index]);
+    foreach my $entity (keys(%{$self->{ENTITY}}))
+    {
+        $data =~ s/$entity/$self->{ENTITY}->{$entity}/g;
     }
 
-    if (!exists($$dstr->{repeat}) && ($#{$$dstr->{list}} == 0)) {
-      $$dstr = $$dstr->{list}->[0];
+    while($data ne "")
+    {
+        my ($att) = ($data =~ /^\s*(\S+)/);
+        $data =~ s/^\s*\S+\s*//;
+
+        my $value;
+        if ($data =~ /^\(/)
+        {
+            $value = $self->getgrouping($data);
+            $data = substr($data,length($value)+1,length($data));
+            $data =~ s/^\s*//;
+            $self->{ATTLIST}->{$tag}->{$att}->{type} = "list";
+            foreach my $val (split(/\s*\|\s*/,substr($value,1,length($value)-2))) {
+$self->{ATTLIST}->{$tag}->{$att}->{value}->{$val} = 1;
+            }
+        }
+        else
+        {
+            ($value) = ($data =~ /^(\S+)/);
+            $data =~ s/^\S+\s*//;
+            $self->{ATTLIST}->{$tag}->{$att}->{type} = $value;
+        }
+
+        my $default;
+        if ($data =~ /^\"|^\'/)
+        {
+            my($sq,$val) = ($data =~ /^(\"|\')([^\"\']*)\1/);
+            $default = $val;
+            $data =~ s/^$sq$val$sq\s*//;
+        }
+        else
+        {
+            ($default) = ($data =~ /^(\S+)/);
+            $data =~ s/^\S+\s*//;
+        }
+
+        $self->{ATTLIST}->{$tag}->{$att}->{default} = $default;
     }
-  }
 }
 
-sub parsegrouping {
-  my $self = shift;
-  my ($tag,$dstr,$data) = @_;
 
-  $data =~ s/^\s*//;
-  $data =~ s/\s*$//;
 
-  if ($data =~ /[\*\+\?]$/) {
-    ($$dstr->{repeat}) = ($data =~ /(.)$/);
-    $data =~ s/.$//;
-  }
-
-  if ($data =~ /^\(.*\)$/) {
-    my ($seperator) = ($data =~ /^\(\s*\S+\s*(\,|\|)/);
-    $$dstr->{ordered} = "yes" if ($seperator eq ",");
-    $$dstr->{ordered} = "no" if ($seperator eq "|");
+sub getgrouping
+{
+    my $self = shift;
+    my ($data) = @_;
 
     my $count = 0;
-    $$dstr->{type} = "list";
-    foreach my $grouping ($self->groupinglist($data,$seperator)) {
-      $self->parsegrouping($tag,\$$dstr->{list}->[$count],$grouping);
-      $count++;
+    my $parens = 0;
+    foreach my $char (split("",$data))
+    {
+        $parens++ if ($char eq "(");
+        $parens-- if ($char eq ")");
+        $count++;
+        last if ($parens == 0);
     }
-  } else {
-    $$dstr->{type} = "element";
-    $$dstr->{element} = $data;
-    $self->{COUNTER}->{$data} = 0 unless exists($self->{COUNTER}->{$data});
-    $self->{COUNTER}->{$data}++;
-    $self->{CHILDREN}->{$tag}->{$data} = 1;
-  }
+    return substr($data,0,$count);
 }
 
 
-sub attlist {
-  my $self = shift;
-  my ($type, $tag, $data) = @_;
+sub groupinglist
+{
+    my $self = shift;
+    my ($grouping,$seperator) = @_;
 
-  foreach my $entity (keys(%{$self->{ENTITY}})) {
-    $data =~ s/$entity/$self->{ENTITY}->{$entity}/g;
-  }
-
-  while($data ne "") {
-    my ($att) = ($data =~ /^\s*(\S+)/);
-    $data =~ s/^\s*\S+\s*//;
-
-    my $value;
-    if ($data =~ /^\(/) {
-      $value = $self->getgrouping($data);
-      $data = substr($data,length($value)+1,length($data));
-      $data =~ s/^\s*//;
-      $self->{ATTLIST}->{$tag}->{$att}->{type} = "list";
-      foreach my $val (split(/\s*\|\s*/,substr($value,1,length($value)-2))) {
-	$self->{ATTLIST}->{$tag}->{$att}->{value}->{$val} = 1;
-      }
-    } else {
-      ($value) = ($data =~ /^(\S+)/);
-      $data =~ s/^\S+\s*//;
-      $self->{ATTLIST}->{$tag}->{$att}->{type} = $value;
+    my @list;
+    my $item = "";
+    my $parens = 0;
+    my $word = "";
+    $grouping = substr($grouping,1,length($grouping)-2) if ($grouping =~ /^\(/);
+    foreach my $char (split("",$grouping))
+    {
+        $parens++ if ($char eq "(");
+        $parens-- if ($char eq ")");
+        if (($parens == 0) && ($char eq $seperator))
+        {
+            push(@list,$word);
+            $word = "";
+        }
+        else
+        {
+            $word .= $char;
+        }
     }
-
-    my $default;
-    if ($data =~ /^\"|^\'/) {
-      my($sq,$val) = ($data =~ /^(\"|\')([^\"\']*)\1/);
-      $default = $val;
-      $data =~ s/^$sq$val$sq\s*//;
-    } else {
-      ($default) = ($data =~ /^(\S+)/);
-      $data =~ s/^\S+\s*//;
-    }
-
-    $self->{ATTLIST}->{$tag}->{$att}->{default} = $default;
-  }
+    push(@list,$word) unless ($word eq "");
+    return @list;
 }
 
 
-
-sub getgrouping {
-  my $self = shift;
-  my ($data) = @_;
-
-  my $count = 0;
-  my $parens = 0;
-  foreach my $char (split("",$data)) {
-    $parens++ if ($char eq "(");
-    $parens-- if ($char eq ")");
-    $count++;
-    last if ($parens == 0);
-  }
-  return substr($data,0,$count);
-}
-
-
-sub groupinglist {
-  my $self = shift;
-  my ($grouping,$seperator) = @_;
-
-  my @list;
-  my $item = "";
-  my $parens = 0;
-  my $word = "";
-  $grouping = substr($grouping,1,length($grouping)-2) if ($grouping =~ /^\(/);
-  foreach my $char (split("",$grouping)) {
-    $parens++ if ($char eq "(");
-    $parens-- if ($char eq ")");
-    if (($parens == 0) && ($char eq $seperator)) {
-      push(@list,$word);
-      $word = "";
-    } else {
-      $word .= $char;
+sub root
+{
+    my $self = shift;
+    my $tag = shift;
+    my @root;
+    foreach my $tag (keys(%{$self->{COUNTER}}))
+    {
+        push(@root,$tag) if ($self->{COUNTER}->{$tag} == 0);
     }
-  }
-  push(@list,$word) unless ($word eq "");
-  return @list;
+
+    print "ERROR:  Too many root tags... Check the DTD...\n"
+        if ($#root > 0);
+    return $root[0];
 }
 
 
-sub root {
-  my $self = shift;
-  my $tag = shift;
-  my @root;
-  foreach my $tag (keys(%{$self->{COUNTER}})) {
-    push(@root,$tag) if ($self->{COUNTER}->{$tag} == 0);
-  }
+sub children
+{
+    my $self = shift;
+    my ($tag,$tree) = @_;
 
-  print "ERROR:  Too many root tags... Check the DTD...\n"
-    if ($#root > 0);
-  return $root[0];
-}
-
-
-sub children {
-  my $self = shift;
-  my ($tag,$tree) = @_;
-
-  return unless exists ($self->{CHILDREN}->{$tag});
-  return if (exists($self->{CHILDREN}->{$tag}->{EMPTY}));
-  if (defined($tree)) {
-    my @current;
-    foreach my $current (&XML::Stream::GetXMLData("tree array",$tree,"*","","")) {
-      push(@current,$$current[0]);
+    return unless exists ($self->{CHILDREN}->{$tag});
+    return if (exists($self->{CHILDREN}->{$tag}->{EMPTY}));
+    if (defined($tree))
+    {
+        my @current;
+        foreach my $current (&XML::Stream::GetXMLData("tree array",$tree,"*","",""))
+        {
+            push(@current,$$current[0]);
+        }
+        return $self->allowedchildren($self->{ELEMENT}->{$tag},\@current);
     }
-    return $self->allowedchildren($self->{ELEMENT}->{$tag},\@current);
-  }
-  return $self->allowedchildren($self->{ELEMENT}->{$tag});
+    return $self->allowedchildren($self->{ELEMENT}->{$tag});
 }
 
 
-sub allowedchildren {
-  my $self = shift;
-  my ($dstr,$current) = @_;
+sub allowedchildren
+{
+    my $self = shift;
+    my ($dstr,$current) = @_;
 
-  my @allowed;
+    my @allowed;
 
-  if ($dstr->{type} eq "element") {
-    my $test = (defined($current) && $#{@{$current}} > -1) ? $$current[0] : "";
-    shift(@{$current}) if ($dstr->{element} eq $test);
-    if ($self->repeatcheck($dstr,$test) == 1) {
-      return $dstr->{element};
+    if ($dstr->{type} eq "element")
+    {
+        my $test = (defined($current) && $#{@{$current}} > -1) ? $$current[0] : "";
+        shift(@{$current}) if ($dstr->{element} eq $test);
+        if ($self->repeatcheck($dstr,$test) == 1)
+        {
+            return $dstr->{element};
+        }
     }
-  } else {
-    foreach my $index (0..$#{$dstr->{list}}) {
-      push(@allowed,$self->allowedchildren($dstr->{list}->[$index],$current));
+    else
+    {
+        foreach my $index (0..$#{$dstr->{list}})
+        {
+            push(@allowed,$self->allowedchildren($dstr->{list}->[$index],$current));
+        }
     }
-  }
 
-  return @allowed;
+    return @allowed;
 }
 
 
-sub repeatcheck {
-  my $self = shift;
-  my ($dstr,$tag) = @_;
+sub repeatcheck
+{
+    my $self = shift;
+    my ($dstr,$tag) = @_;
 
-  $dstr = $self->{ELEMENT}->{$dstr} if exists($self->{ELEMENT}->{$dstr});
+    $dstr = $self->{ELEMENT}->{$dstr} if exists($self->{ELEMENT}->{$dstr});
 
 #  print "repeatcheck: tag($tag)\n";
 #  print "repeatcheck: repeat($dstr->{repeat})\n"
 #    if exists($dstr->{repeat});
 
-  my $return = 0;
-  $return = ((!defined($tag) ||
-	      ($tag eq $dstr->{element})) ?
-	     0 :
-	     1)
-    if (!exists($dstr->{repeat}) ||
-	($dstr->{repeat} eq "?"));
-  $return = ((defined($tag) ||
-	      (exists($dstr->{ordered}) &&
-	       ($dstr->{ordered} eq "yes"))) ?
-	     1 :
-	     0)
-    if (exists($dstr->{repeat}) &&
-	(($dstr->{repeat} eq "+") ||
-	 ($dstr->{repeat} eq "*")));
+    my $return = 0;
+    $return = ((!defined($tag) ||
+                ($tag eq $dstr->{element})) ?
+               0 :
+               1)
+        if (!exists($dstr->{repeat}) ||
+            ($dstr->{repeat} eq "?"));
+    $return = ((defined($tag) ||
+                (exists($dstr->{ordered}) &&
+                ($dstr->{ordered} eq "yes"))) ?
+               1 :
+               0)
+        if (exists($dstr->{repeat}) &&
+            (($dstr->{repeat} eq "+") ||
+             ($dstr->{repeat} eq "*")));
 
 #  print "repeatcheck: return($return)\n";
-  return $return;
+    return $return;
 }
 
 
-sub required {
-  my $self = shift;
-  my ($dstr,$tag,$count) = @_;
+sub required
+{
+    my $self = shift;
+    my ($dstr,$tag,$count) = @_;
 
-  $dstr = $self->{ELEMENT}->{$dstr} if exists($self->{ELEMENT}->{$dstr});
+    $dstr = $self->{ELEMENT}->{$dstr} if exists($self->{ELEMENT}->{$dstr});
 
-  if ($dstr->{type} eq "element") {
-    return 0 if ($dstr->{element} ne $tag);
-    return 1 if !exists($dstr->{repeat});
-    return 1 if (($dstr->{repeat} eq "+") && ($count == 1)) ;
-  } else {
-    return 0 if (($dstr->{repeat} eq "*") || ($dstr->{repeat} eq "?"));
-    my $test = 0;
-    foreach my $index (0..$#{$dstr->{list}}) {
-      $test = $test | $self->required($dstr->{list}->[$index],$tag,$count);
+    if ($dstr->{type} eq "element")
+    {
+        return 0 if ($dstr->{element} ne $tag);
+        return 1 if !exists($dstr->{repeat});
+        return 1 if (($dstr->{repeat} eq "+") && ($count == 1)) ;
     }
-    return $test;
-  }
-  return 0;
+    else
+    {
+        return 0 if (($dstr->{repeat} eq "*") || ($dstr->{repeat} eq "?"));
+        my $test = 0;
+        foreach my $index (0..$#{$dstr->{list}})
+        {
+            $test = $test | $self->required($dstr->{list}->[$index],$tag,$count);
+        }
+        return $test;
+    }
+    return 0;
 }
 
 
-sub addchild {
-  my $self = shift;
-  my ($tag,$child,$tree) = @_;
+sub addchild
+{
+    my $self = shift;
+    my ($tag,$child,$tree) = @_;
 
 #  print "addchild: tag($tag) child($child)\n";
 
-  my @current;
-  if (defined($tree)) {
+    my @current;
+    if (defined($tree))
+    {
 #    &Net::Jabber::printData("\$tree",$tree);
 
-    @current = &XML::Stream::GetXMLData("index array",$tree,"*","","");
+        @current = &XML::Stream::GetXMLData("index array",$tree,"*","","");
 
 #    &Net::Jabber::printData("\$current",\@current);
-  }
+    }
 
-  my @newBranch = $self->addchildrecurse($self->{ELEMENT}->{$tag},$child,\@current);
+    my @newBranch = $self->addchildrecurse($self->{ELEMENT}->{$tag},$child,\@current);
 
-  return $tree unless ("@newBranch" ne "");
+    return $tree unless ("@newBranch" ne "");
 
 #  &Net::Jabber::printData("\$newBranch",\@newBranch);
 
-  my $location = shift(@newBranch);
+    my $location = shift(@newBranch);
 
-  if ($location eq "end") {
-    splice(@{$$tree[1]},@{$$tree[1]},0,@newBranch);
-  } else {
-    splice(@{$$tree[1]},$location,0,@newBranch);
-  }
-  return $tree;
+    if ($location eq "end")
+    {
+        splice(@{$$tree[1]},@{$$tree[1]},0,@newBranch);
+    }
+    else
+    {
+        splice(@{$$tree[1]},$location,0,@newBranch);
+    }
+    return $tree;
 }
 
 
-sub addcdata {
-  my $self = shift;
-  my ($tag,$child,$tree) = @_;
+sub addcdata
+{
+    my $self = shift;
+    my ($tag,$child,$tree) = @_;
 
 #  print "addchild: tag($tag) child($child)\n";
 
-  my @current;
-  if (defined($tree)) {
+    my @current;
+    if (defined($tree))
+    {
 #    &Net::Jabber::printData("\$tree",$tree);
 
-    @current = &XML::Stream::GetXMLData("index array",$tree,"*","","");
+        @current = &XML::Stream::GetXMLData("index array",$tree,"*","","");
 
 #    &Net::Jabber::printData("\$current",\@current);
-  }
+    }
 
-  my @newBranch = $self->addchildrecurse($self->{ELEMENT}->{$tag},$child,\@current);
+    my @newBranch = $self->addchildrecurse($self->{ELEMENT}->{$tag},$child,\@current);
 
-  return $tree unless ("@newBranch" ne "");
+    return $tree unless ("@newBranch" ne "");
 
 #  &Net::Jabber::printData("\$newBranch",\@newBranch);
 
-  my $location = shift(@newBranch);
+    my $location = shift(@newBranch);
 
-  if ($location eq "end") {
-    splice(@{$$tree[1]},@{$$tree[1]},0,@newBranch);
-  } else {
-    splice(@{$$tree[1]},$location,0,@newBranch);
-  }
-  return $tree;
+    if ($location eq "end")
+    {
+        splice(@{$$tree[1]},@{$$tree[1]},0,@newBranch);
+    }
+    else
+    {
+        splice(@{$$tree[1]},$location,0,@newBranch);
+    }
+    return $tree;
 }
 
 
-sub addchildrecurse {
-  my $self = shift;
-  my ($dstr,$child,$current) = @_;
+sub addchildrecurse
+{
+    my $self = shift;
+    my ($dstr,$child,$current) = @_;
 
 #  print "addchildrecurse: child($child) type($dstr->{type})\n";
 
-  if ($dstr->{type} eq "element") {
+    if ($dstr->{type} eq "element")
+    {
 #    print "addchildrecurse: tag($dstr->{element})\n";
-    my $count = 0;
-    while(($#{@{$current}} > -1) && ($dstr->{element} eq $$current[0])) {
-      shift(@{$current});
-      shift(@{$current});
-      $count++;
-    }
-    if (($dstr->{element} eq $child) &&
-	($self->repeatcheck($dstr,(($count > 0) ? $child : "")) == 1)) {
-      my @return = ( "end" , $self->newbranch($child));
-      @return = ($$current[1], $self->newbranch($child))
-	if ($#{@{$current}} > -1);
+        my $count = 0;
+        while(($#{@{$current}} > -1) && ($dstr->{element} eq $$current[0]))
+        {
+            shift(@{$current});
+            shift(@{$current});
+            $count++;
+        }
+        if (($dstr->{element} eq $child) &&
+            ($self->repeatcheck($dstr,(($count > 0) ? $child : "")) == 1))
+        {
+            my @return = ( "end" , $self->newbranch($child));
+            @return = ($$current[1], $self->newbranch($child))
+                if ($#{@{$current}} > -1);
 #      print "addchildrecurse: Found the spot! (",join(",",@return),")\n";
 
-      return @return;
+            return @return;
+        }
     }
-  } else {
-    foreach my $index (0..$#{$dstr->{list}}) {
-      my @newBranch = $self->addchildrecurse($dstr->{list}->[$index],$child,$current);
-      return @newBranch if ("@newBranch" ne "");
+    else
+    {
+        foreach my $index (0..$#{$dstr->{list}})
+        {
+            my @newBranch = $self->addchildrecurse($dstr->{list}->[$index],$child,$current);
+            return @newBranch if ("@newBranch" ne "");
+        }
     }
-  }
 #  print "Let's blow....\n";
-  return;
+    return;
 }
 
 
-sub deletechild {
-  my $self = shift;
-  my ($tag,$parent,$parenttree,$tree) = @_;
+sub deletechild
+{
+    my $self = shift;
+    my ($tag,$parent,$parenttree,$tree) = @_;
 
-  return $tree unless exists($self->{ELEMENT}->{$tag});
-  return $tree if $self->required($parent,$tag,&XML::Stream::GetXMLData("count",$parenttree,$tag));
+    return $tree unless exists($self->{ELEMENT}->{$tag});
+    return $tree if $self->required($parent,$tag,&XML::Stream::GetXMLData("count",$parenttree,$tag));
 
-  return [];
+    return [];
 }
 
 
 
-sub newbranch {
-  my $self = shift;
-  my $tag = shift;
+sub newbranch
+{
+    my $self = shift;
+    my $tag = shift;
 
-  $tag = $self->root() unless defined($tag);
+    $tag = $self->root() unless defined($tag);
 
-  my @tree = ();
+    my @tree = ();
 
-  return ("0","") if ($tag eq "#PCDATA");
+    return ("0","") if ($tag eq "#PCDATA");
 
-  push(@tree,$tag);
-  push(@tree,[ {} ]);
+    push(@tree,$tag);
+    push(@tree,[ {} ]);
 
-  foreach my $att ($self->attribs($tag)) {
-    $tree[1]->[0]->{$att} = ""
-      if (($self->{ATTLIST}->{$tag}->{$att}->{default} eq "#REQUIRED") &&
-	  ($self->{ATTLIST}->{$tag}->{$att}->{type} eq "CDATA"));
-  }
-
-  push(@{$tree[1]},$self->recursebranch($self->{ELEMENT}->{$tag}));
-  return @tree;
-}
-
-
-sub recursebranch {
-  my $self = shift;
-  my $dstr = shift;
-
-  my @tree;
-  if (($dstr->{type} eq "element") &&
-      ($dstr->{element} ne "EMPTY")) {
-    @tree = $self->newbranch($dstr->{element})
-      if (!exists($dstr->{repeat}) ||
-	  ($dstr->{repeat} eq "+"));
-  } else {
-    foreach my $index (0..$#{$dstr->{list}}) {
-      push(@tree,$self->recursebranch($dstr->{list}->[$index]))
-	if (!exists($dstr->{repeat}) ||
-	    ($dstr->{repeat} eq "+"));
+    foreach my $att ($self->attribs($tag))
+    {
+        $tree[1]->[0]->{$att} = ""
+            if (($self->{ATTLIST}->{$tag}->{$att}->{default} eq "#REQUIRED") &&
+                ($self->{ATTLIST}->{$tag}->{$att}->{type} eq "CDATA"));
     }
-  }
-  return @tree;
+
+    push(@{$tree[1]},$self->recursebranch($self->{ELEMENT}->{$tag}));
+    return @tree;
 }
 
 
-sub attribs {
-  my $self = shift;
-  my ($tag,$tree) = @_;
+sub recursebranch
+{
+    my $self = shift;
+    my $dstr = shift;
 
-  return unless exists ($self->{ATTLIST}->{$tag});
-
-  if (defined($tree)) {
-    my %current = &XML::Stream::GetXMLData("attribs",$tree,"","","");
-    return $self->allowedattribs($tag,\%current);
-  }
-  return $self->allowedattribs($tag);
+    my @tree;
+    if (($dstr->{type} eq "element") &&
+        ($dstr->{element} ne "EMPTY"))
+    {
+        @tree = $self->newbranch($dstr->{element})
+            if (!exists($dstr->{repeat}) ||
+                ($dstr->{repeat} eq "+"));
+    }
+    else
+    {
+        foreach my $index (0..$#{$dstr->{list}})
+        {
+            push(@tree,$self->recursebranch($dstr->{list}->[$index]))
+if (!exists($dstr->{repeat}) ||
+        ($dstr->{repeat} eq "+"));
+        }
+    }
+    return @tree;
 }
 
 
-sub allowedattribs {
-  my $self = shift;
-  my ($tag,$current) = @_;
+sub attribs
+{
+    my $self = shift;
+    my ($tag,$tree) = @_;
 
-  my %allowed;
-  foreach my $att (keys(%{$self->{ATTLIST}->{$tag}})) {
-    $allowed{$att} = 1 unless (defined($current) &&
-			       exists($current->{$att}));
-  }
-  return sort {$a cmp $b} keys(%allowed);
+    return unless exists ($self->{ATTLIST}->{$tag});
+
+    if (defined($tree))
+    {
+        my %current = &XML::Stream::GetXMLData("attribs",$tree,"","","");
+        return $self->allowedattribs($tag,\%current);
+    }
+    return $self->allowedattribs($tag);
 }
 
 
-sub attribvalue {
-  my $self = shift;
-  my $tag = shift;
-  my $att = shift;
+sub allowedattribs
+{
+    my $self = shift;
+    my ($tag,$current) = @_;
 
-  return $self->{ATTLIST}->{$tag}->{$att}->{type}
-    if ($self->{ATTLIST}->{$tag}->{$att}->{type} ne "list");
-  return sort {$a cmp $b} keys(%{$self->{ATTLIST}->{$tag}->{$att}->{value}});
+    my %allowed;
+    foreach my $att (keys(%{$self->{ATTLIST}->{$tag}}))
+    {
+        $allowed{$att} = 1 unless (defined($current) &&
+                                   exists($current->{$att}));
+    }
+    return sort {$a cmp $b} keys(%allowed);
 }
 
 
-sub addattrib {
-  my $self = shift;
-  my ($tag,$att,$tree) = @_;
+sub attribvalue
+{
+    my $self = shift;
+    my $tag = shift;
+    my $att = shift;
 
-  return $tree unless exists($self->{ATTLIST}->{$tag});
-  return $tree unless exists($self->{ATTLIST}->{$tag}->{$att});
-
-  my $default = $self->{ATTLIST}->{$tag}->{$att}->{default};
-  $default = "" if ($default eq "#REQUIRED");
-  $default = "" if ($default eq "#IMPLIED");
-
-  $$tree[1]->[0]->{$att} = $default;
-
-  return $tree;
+    return $self->{ATTLIST}->{$tag}->{$att}->{type}
+        if ($self->{ATTLIST}->{$tag}->{$att}->{type} ne "list");
+    return sort {$a cmp $b} keys(%{$self->{ATTLIST}->{$tag}->{$att}->{value}});
 }
 
 
-sub attribrequired {
-  my $self = shift;
-  my ($tag,$att) = @_;
+sub addattrib
+{
+    my $self = shift;
+    my ($tag,$att,$tree) = @_;
 
-  return 0 unless exists($self->{ATTLIST}->{$tag});
-  return 0 unless exists($self->{ATTLIST}->{$tag}->{$att});
+    return $tree unless exists($self->{ATTLIST}->{$tag});
+    return $tree unless exists($self->{ATTLIST}->{$tag}->{$att});
 
-  return 1 if ($self->{ATTLIST}->{$tag}->{$att}->{default} eq "#REQUIRED");
-  return 0;
+    my $default = $self->{ATTLIST}->{$tag}->{$att}->{default};
+    $default = "" if ($default eq "#REQUIRED");
+    $default = "" if ($default eq "#IMPLIED");
+
+    $$tree[1]->[0]->{$att} = $default;
+
+    return $tree;
 }
 
 
-sub deleteattrib {
-  my $self = shift;
-  my ($tag,$att,$tree) = @_;
+sub attribrequired
+{
+    my $self = shift;
+    my ($tag,$att) = @_;
 
-  return $tree unless exists($self->{ATTLIST}->{$tag});
-  return $tree unless exists($self->{ATTLIST}->{$tag}->{$att});
+    return 0 unless exists($self->{ATTLIST}->{$tag});
+    return 0 unless exists($self->{ATTLIST}->{$tag}->{$att});
 
-  return if $self->attribrequired($tag,$att);
+    return 1 if ($self->{ATTLIST}->{$tag}->{$att}->{default} eq "#REQUIRED");
+    return 0;
+}
 
-  delete($$tree[1]->[0]->{$att});
 
-  return $tree;
+sub deleteattrib
+{
+    my $self = shift;
+    my ($tag,$att,$tree) = @_;
+
+    return $tree unless exists($self->{ATTLIST}->{$tag});
+    return $tree unless exists($self->{ATTLIST}->{$tag}->{$att});
+
+    return if $self->attribrequired($tag,$att);
+
+    delete($$tree[1]->[0]->{$att});
+
+    return $tree;
 }
 

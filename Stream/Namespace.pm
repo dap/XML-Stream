@@ -97,9 +97,10 @@ use strict;
 use Carp;
 use vars qw($VERSION);
 
-$VERSION = "1.15";
+$VERSION = "1.16";
 
-sub new {
+sub new
+{
   my $proto = shift;
   my $self = { };
 
@@ -112,7 +113,8 @@ sub new {
 }
 
 
-sub SetNamespace {
+sub SetNamespace
+{
   my $self = shift;
   my ($namespace) = @_;
 
@@ -120,7 +122,8 @@ sub SetNamespace {
 }
 
 
-sub SetXMLNS {
+sub SetXMLNS
+{
   my $self = shift;
   my ($xmlns) = @_;
 
@@ -128,30 +131,35 @@ sub SetXMLNS {
 }
 
 
-sub SetAttributes {
+sub SetAttributes
+{
   my $self = shift;
   my %att = @_;
 
   my $key;
-  foreach $key (keys(%att)) {
+  foreach $key (keys(%att))
+  {
     $self->{Attributes}->{$key} = $att{$key};
   }
 }
 
 
-sub GetNamespace {
+sub GetNamespace
+{
   my $self = shift;
 
   return $self->{Namespace};
 }
 
-sub GetXMLNS {
+sub GetXMLNS
+{
   my $self = shift;
 
   return $self->{XMLNS};
 }
 
-sub GetAttributes {
+sub GetAttributes
+{
   my $self = shift;
   my ($attrib) = @_;
 
@@ -160,7 +168,8 @@ sub GetAttributes {
 }
 
 
-sub GetStream {
+sub GetStream
+{
   my $self = shift;
 
   my $string = "";
@@ -168,7 +177,8 @@ sub GetStream {
   $string .= "xmlns:".$self->GetNamespace();
   $string .= "='".$self->GetXMLNS()."'";
   my $attrib;
-  foreach $attrib (keys(%{$self->GetAttributes()})) {
+  foreach $attrib (keys(%{$self->GetAttributes()}))
+  {
     $string .= " ".$self->GetNamespace().":";
     $string .= $attrib;
     $string .= "='".$self->GetAttributes($attrib)."'";

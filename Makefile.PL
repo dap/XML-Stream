@@ -1,22 +1,23 @@
+use 5.006_001;
 use ExtUtils::MakeMaker;
 
-# See lib/ExtUtils/MakeMaker.pm for details of how to influence
-# the contents of the Makefile that is written.
-
 WriteMakefile(
-	      'NAME'	  => 'XML::Stream',
-	      'PM' 	  => {
-			      'Stream.pm' => '$(INST_LIBDIR)/Stream.pm',
-			      'Stream/Tree.pm' => '$(INST_LIBDIR)/Stream/Tree.pm',
-			      'Stream/Hash.pm' => '$(INST_LIBDIR)/Stream/Hash.pm',
-			      'Stream/Node.pm' => '$(INST_LIBDIR)/Stream/Node.pm',
-			      'Stream/Namespace.pm' => '$(INST_LIBDIR)/Stream/Namespace.pm',
-			      'Stream/Parser.pm' => '$(INST_LIBDIR)/Stream/Parser.pm',
-			      'Stream/Parser/DTD.pm' => '$(INST_LIBDIR)/Stream/Parser/DTD.pm',
-			     },
-	      'PREREQ_PM' => {
-			      'Unicode::String' => 2.06,
-			     },
-	      'VERSION'   => '1.15',
-	      'dist'      => { 'COMPRESS' => 'gzip --best' }
-	     );
+    'NAME'  => 'XML::Stream',
+    'PM'   => {
+        'Stream.pm' => '$(INST_LIBDIR)/Stream.pm',
+        'Stream/Tree.pm' => '$(INST_LIBDIR)/Stream/Tree.pm',
+        'Stream/Node.pm' => '$(INST_LIBDIR)/Stream/Node.pm',
+        'Stream/Namespace.pm' => '$(INST_LIBDIR)/Stream/Namespace.pm',
+        'Stream/Parser.pm' => '$(INST_LIBDIR)/Stream/Parser.pm',
+        'Stream/Parser/DTD.pm' => '$(INST_LIBDIR)/Stream/Parser/DTD.pm',
+        'Stream/XPath.pm' => '$(INST_LIBDIR)/Stream/XPath.pm',
+        'Stream/XPath/Op.pm' => '$(INST_LIBDIR)/Stream/XPath/Op.pm',
+        'Stream/XPath/Query.pm' => '$(INST_LIBDIR)/Stream/XPath/Query.pm',
+        'Stream/XPath/Value.pm' => '$(INST_LIBDIR)/Stream/XPath/Value.pm',
+    },
+    'VERSION_FROM' => 'Stream.pm',
+    'dist'      => {
+        'COMPRESS' => 'gzip --best'
+    }
+);
+

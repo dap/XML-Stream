@@ -285,5 +285,3 @@ is onto a list with the previous element, which is the string 'A':
   And voila!  The tree is complete.  We now call the callback function,
 pass it the tree, and then reset the tree for the next tag to be parsed.
 
-
-Coming Soon (i hope) XML::Stream::Hash building

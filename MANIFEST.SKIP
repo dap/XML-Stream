@@ -1,2 +1,9 @@
+CVS
 Makefile$
-^CVS
+Makefile.old$
+TODO
+blib
+jsax
+tests
+test.pl
+.swp$

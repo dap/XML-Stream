@@ -1,4 +1,4 @@
-XML::Stream v1.15
+XML::Stream v1.16
 
 This module provides you with access to XML Streams.  An XML Stream
 is just that.  A stream of XML over a connection between two computers.
@@ -8,7 +8,6 @@ please visit:
 http://etherx.jabber.org/streams
 
 Ryan Eatmon
-Jabber Perl Team Leader
 reatmon@jabber.org
 
 
@@ -20,8 +19,7 @@ INSTALLATION
 
 REQUIREMENTS
 
-  Unicode::String - a bug in perl 5.6 makes this a requirement for ALL
-                    versions of Perl.  Maybe I can get rid of this someday.
+  Perl 5.8.0 - For unicode support
 
 RECOMMENDATIONS
 
@@ -29,21 +27,9 @@ RECOMMENDATIONS
 
 STATUS
 
-  Added support for outgoing HTTP connections.  If the server can accept
-HTTP connections, then the socket is setup and kept alive while you send
-and receive XML.  This even works through HTTP proxies as the proxy
-thinks that the document is still loading and so keep the connection
-alive.
-
-  With a previous release I added in a new Parser that the module uses to
-parse the incoming streams.  This new Parser is a SAX parser based off
-of the one written by Jeremie Miller.
-  Also with this release I've started adding in the ability for
-XML::Stream to listen on a port and accept incoming streams.  This feature
-in still under development so don't try and use it yet...
-  Finally, I've started working on a DTD parser and verifier for the
-module, but it is by no means even close to being done.  So don't even look
-into using it. =)
+    This release supports mostly full XPath (only a few functions not
+implemented).  Also the Hash data type has been removed, please move to
+Node.
 
 Please send any bug reports to reatmon@jabber.org.
-2002/01/06
+2002/11/04

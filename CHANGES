@@ -1,3 +1,18 @@
+1.16
+====
+  - Upgraded the XPath engine to a more extensible and robust
+    design.
+  - To get tests to work 100% I have to get better determination
+    on the BuildXML functions.  So fomr this point on, all
+    attributes are printed in alphabetical order.
+  - Fixed bug in Parser with <![CDATA[...]]> not being supported.
+  - Changed BuildXML for Tree.  You have to pass it a ref
+    and not an array.  That was to make the rawXML thing
+    work better.
+  - Added the ability to add raw XML at the BuildXML call.
+  - Added remove_cdata method to Node.
+  - Added methods to Node to make calls easier (XPath, GetXML).
+
 1.15
 ====
   - Added XPath function and support for most of the abbreviated

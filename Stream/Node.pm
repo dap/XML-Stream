@@ -71,19 +71,21 @@ would be:
 
 =head1 METHODS
 
-  new()         - creates a new node.  If you specify tag, then the root
-  new(tag)        tag is set.  If you specify data, then cdata is added
-  new(tag,data)   to the node as well.  Returns the created node.
+  new()          - creates a new node.  If you specify tag, then the root
+  new(tag)         tag is set.  If you specify data, then cdata is added
+  new(tag,cdata)   to the node as well.  Returns the created node.
 
   get_tag() - returns the root tag of the node.
 
   set_tag(tag) - set the root tag of the node to tag.
 
-  add_child(node) - adds the specified node as a child to the current
-  add_child(tag)    node, or creates a new node with the specified tag
-                    as the root node.  Returns the node added.
+  add_child(node)      - adds the specified node as a child to the current
+  add_child(tag)         node, or creates a new node with the specified tag
+  add_child(tag,cdata)   as the root node.  Returns the node added.
 
   remove_child(node) - removes the child node from the current node.
+  
+  remove_cdata() - removes all of the cdata children from the current node.
 
   add_cdata(string) - adds the string as cdata onto the current nodes
                       child list.
@@ -105,6 +107,15 @@ would be:
   attrib() - returns a hash containing all of the attributes on this
              node.
 
+  copy() - return a recursive copy of the node.
+
+  XPath(path) - run XML::Stream::XPath on this node.
+  
+  XPathCheck(path) - run XML::Stream::XPath on this node and return 1 or 0
+                     to see if it matches or not.
+
+  GetXML() - return the node in XML string form.
+
 =head1 AUTHOR
 
 By Ryan Eatmon in June 2002 for http://jabber.org/
@@ -118,158 +129,252 @@ it under the same terms as Perl itself.
 
 use vars qw($VERSION);
 
-$VERSION = "1.15";
+$VERSION = "1.16";
 
-sub new {
-  my $proto = shift;
-  my $class = ref($proto) || $proto;
+sub new
+{
+    my $proto = shift;
+    my $class = ref($proto) || $proto;
 
-  if (ref($_[0]) eq "XML::Stream::Node") {
-    return $_[0];
-  }
-
-  my $self = {};
-  bless($self, $proto);
-
-  my ($tag,$data) = @_;
-
-  $self->set_tag($tag) if defined($tag);
-  $self->add_cdata($data) if defined($data);
-
-  return $self;
-}
-
-
-sub debug {
-  my $self = shift;
-  my ($indent) = @_;
-
-  $indent = "" unless defined($indent);
-
-  if ($self->{TAG} eq "__xmlstream__:node:cdata") {
-    print STDERR       $indent,"cdata(",join("",@{$self->{CHILDREN}}),")\n";
-  } else {
-    print STDERR       $indent,"packet($self):\n";
-    print STDERR       $indent,"tag:     <$self->{TAG}\n";
-    if (scalar(keys(%{$self->{ATTRIBS}})) > 0) {
-      print STDERR     $indent,"attribs:\n";
-      foreach my $key (keys(%{$self->{ATTRIBS}})) {
-	print STDERR   $indent,"           $key = '$self->{ATTRIBS}->{$key}' ";
-      }
-      print STDERR "\n";
+    if (ref($_[0]) eq "XML::Stream::Node")
+    {
+        return $_[0];
     }
-    if ($#{$self->{CHILDREN}} == -1) {
-      print STDERR     $indent,"         />\n";
-    } else {
-      print STDERR     $indent,"         >\n";
-      print STDERR     $indent,"children:\n";
-      foreach my $child (@{$self->{CHILDREN}}) {
-	$child->debug($indent."  ");
-      }
+
+    my $self = {};
+    bless($self, $proto);
+
+    my ($tag,$data) = @_;
+
+    $self->set_tag($tag) if defined($tag);
+    $self->add_cdata($data) if defined($data);
+
+    return $self;
+}
+
+
+sub debug
+{
+    my $self = shift;
+    my ($indent) = @_;
+
+    $indent = "" unless defined($indent);
+
+    if ($self->{TAG} eq "__xmlstream__:node:cdata")
+    {
+        print        $indent,"cdata(",join("",@{$self->{CHILDREN}}),")\n";
     }
-    print STDERR     $indent,"         </$self->{TAG}>\n";
-  }
-}
-
-
-sub children {
-  my $self = shift;
-
-  return () unless exists($self->{CHILDREN});
-  return @{$self->{CHILDREN}};
-}
-
-
-sub add_child {
-  my $self = shift;
-
-  my $child = new XML::Stream::Node(@_);
-  push(@{$self->{CHILDREN}},$child);
-  return $child;
-}
-
-
-sub remove_child {
-  my $self = shift;
-  my $child = shift;
-
-  foreach my $index (0..$#{$self->{CHILDREN}}) {
-    if ($child == $self->{CHILDREN}->[$index]) {
-      splice(@{$self->{CHILDREN}},$index,1);
-      last;
+    else
+    {
+        print        $indent,"packet($self):\n";
+        print        $indent,"tag:     <$self->{TAG}\n";
+        if (scalar(keys(%{$self->{ATTRIBS}})) > 0)
+        {
+            print      $indent,"attribs:\n";
+            foreach my $key (sort {$a cmp $b} keys(%{$self->{ATTRIBS}}))
+            {
+                print    $indent,"           $key = '$self->{ATTRIBS}->{$key}'\n";
+            }
+        }
+        if ($#{$self->{CHILDREN}} == -1)
+        {
+            print      $indent,"         />\n";
+        }
+        else
+        {
+            print      $indent,"         >\n";
+            print      $indent,"children:\n";
+            foreach my $child (@{$self->{CHILDREN}})
+            {
+                $child->debug($indent."  ");
+            }
+        }
+        print      $indent,"         </$self->{TAG}>\n";
     }
-  }
 }
 
 
-sub add_cdata {
-  my $self = shift;
-  my $child = new XML::Stream::Node("__xmlstream__:node:cdata");
-  push(@{$child->{CHILDREN}},@_);
-  push(@{$self->{CHILDREN}},$child);
-  return $child;
-}
+sub children
+{
+    my $self = shift;
 
-sub get_cdata {
-  my $self = shift;
-
-  my $cdata = "";
-  foreach my $child (@{$self->{CHILDREN}}) {
-    $cdata .= join("",$child->children())
-      if ($child->get_tag() eq "__xmlstream__:node:cdata");
-  }
-
-  return $cdata;
+    return () unless exists($self->{CHILDREN});
+    return @{$self->{CHILDREN}};
 }
 
 
-sub attrib {
-  my $self = shift;
-  return () unless exists($self->{ATTRIBS});
-  return %{$self->{ATTRIBS}};
+sub add_child
+{
+    my $self = shift;
+
+    my $child = new XML::Stream::Node(@_);
+    push(@{$self->{CHILDREN}},$child);
+    return $child;
 }
 
 
-sub get_attrib {
-  my $self = shift;
-  my ($key) = @_;
+sub remove_child
+{
+    my $self = shift;
+    my $child = shift;
 
-  return unless exists($self->{ATTRIBS}->{$key});
-  return $self->{ATTRIBS}->{$key};
+    foreach my $index (0..$#{$self->{CHILDREN}})
+    {
+        if ($child == $self->{CHILDREN}->[$index])
+        {
+            splice(@{$self->{CHILDREN}},$index,1);
+            last;
+        }
+    }
 }
 
 
-sub put_attrib {
-  my $self = shift;
-  my (%att) = @_;
-
-  foreach my $key (keys(%att)) {
-    $self->{ATTRIBS}->{$key} = $att{$key};
-  }
+sub add_cdata
+{
+    my $self = shift;
+    my $child = new XML::Stream::Node("__xmlstream__:node:cdata");
+    foreach my $cdata (@_)
+    {
+        push(@{$child->{CHILDREN}},$cdata);
+    }
+    push(@{$self->{CHILDREN}},$child);
+    return $child;
 }
 
 
-sub remove_attrib {
-  my $self = shift;
-  my ($key) = @_;
+sub get_cdata
+{
+    my $self = shift;
 
-  return unless exists($self->{ATTRIBS}->{$key});
-  delete($self->{ATTRIBS}->{$key});
+    my $cdata = "";
+    foreach my $child (@{$self->{CHILDREN}})
+    {
+        $cdata .= join("",$child->children())
+            if ($child->get_tag() eq "__xmlstream__:node:cdata");
+    }
+
+    return $cdata;
+} 
+
+
+sub remove_cdata
+{
+    my $self = shift;
+
+    foreach my $index (0..$#{$self->{CHILDREN}})
+    {
+        if ($self->{CHILDREN}->[$index]->get_tag() eq "__xmlstream__:node:cdata")
+        {
+            splice(@{$self->{CHILDREN}},$index,1);
+            last;
+        }
+    }
+} 
+
+
+sub attrib
+{
+    my $self = shift;
+    return () unless exists($self->{ATTRIBS});
+    return %{$self->{ATTRIBS}};
+} 
+
+
+sub get_attrib
+{
+    my $self = shift;
+    my ($key) = @_;
+
+    return unless exists($self->{ATTRIBS}->{$key});
+    return $self->{ATTRIBS}->{$key};
 }
 
 
-sub get_tag {
-  my $self = shift;
+sub put_attrib
+{ 
+    my $self = shift;
+    my (%att) = @_;
 
-  return $self->{TAG};
+    foreach my $key (keys(%att))
+    {
+        $self->{ATTRIBS}->{$key} = $att{$key};
+    }
 }
 
 
-sub set_tag {
-  my $self = shift;
-  my ($tag) = @_;
+sub remove_attrib
+{
+    my $self = shift;
+    my ($key) = @_;
 
-  $self->{TAG} = $tag;
+    return unless exists($self->{ATTRIBS}->{$key});
+    delete($self->{ATTRIBS}->{$key});
+}
+
+
+sub get_tag
+{
+    my $self = shift;
+
+    return $self->{TAG};
+}
+
+
+sub set_tag
+{
+    my $self = shift;
+    my ($tag) = @_;
+
+    $self->{TAG} = $tag; 
+}
+
+
+sub XPath
+{
+    my $self = shift;
+    my @results = &XML::Stream::XPath($self,@_);
+    return unless ($#results > -1);
+    return $results[0] unless wantarray;
+    return @results;
+}
+
+
+sub XPathCheck
+{
+    my $self = shift;
+    return &XML::Stream::XPathCheck($self,@_);
+}
+
+
+sub GetXML
+{
+    my $self = shift;
+
+    return &BuildXML($self,@_);
+}
+
+
+sub copy
+{
+    my $self = shift;
+
+    my $new_node = new XML::Stream::Node();
+    $new_node->set_tag($self->get_tag());
+    $new_node->put_attrib($self->attrib());
+
+    foreach my $child ($self->children())
+    {
+        if ($child->get_tag() eq "__xmlstream__:node:cdata")
+        {
+            $new_node->add_cdata($self->get_cdata());
+        }
+        else
+        {
+            $new_node->add_child($child->copy());
+        }
+    }
+
+    return $new_node;
 }
 
 
@@ -284,26 +389,28 @@ sub set_tag {
 #                   and tags to it later.
 #
 ##############################################################################
-sub _handle_element {
-  my $self;
-  $self = $_[0] if (ref($_[0]) eq "XML::Stream::Parser");
-  $self = shift unless (ref($_[0]) eq "XML::Stream::Parser");
-  my ($sax, $tag, %att) = @_;
-  my $sid = $sax->getSID();
+sub _handle_element
+{
+    my $self;
+    $self = $_[0] if (ref($_[0]) eq "XML::Stream::Parser");
+    $self = shift unless (ref($_[0]) eq "XML::Stream::Parser");
+    my ($sax, $tag, %att) = @_;
+    my $sid = $sax->getSID();
 
-  $self->debug(2,"Node: _handle_element: sid($sid) sax($sax) tag($tag) att(",%att,")");
+    $self->debug(2,"Node: _handle_element: sid($sid) sax($sax) tag($tag) att(",%att,")");
 
-  my $node = new XML::Stream::Node($tag);
-  $node->put_attrib(%att);
+    my $node = new XML::Stream::Node($tag);
+    $node->put_attrib(%att);
 
-  $self->debug(2,"Node: _handle_element: check(",$#{$self->{SIDS}->{$sid}->{node}},")");
+    $self->debug(2,"Node: _handle_element: check(",$#{$self->{SIDS}->{$sid}->{node}},")");
 
-  if ($#{$self->{SIDS}->{$sid}->{node}} >= 0) {
-    $self->{SIDS}->{$sid}->{node}->[$#{$self->{SIDS}->{$sid}->{node}}]->
-      add_child($node);
-  }
+    if ($#{$self->{SIDS}->{$sid}->{node}} >= 0)
+    {
+        $self->{SIDS}->{$sid}->{node}->[$#{$self->{SIDS}->{$sid}->{node}}]->
+            add_child($node);
+    }
 
-  push(@{$self->{SIDS}->{$sid}->{node}},$node);
+    push(@{$self->{SIDS}->{$sid}->{node}},$node);
 }
 
 
@@ -314,25 +421,22 @@ sub _handle_element {
 #                      CDATA into one tag.
 #
 ##############################################################################
-sub _handle_cdata {
-  my $self;
-  $self = $_[0] if (ref($_[0]) eq "XML::Stream::Parser");
-  $self = shift unless (ref($_[0]) eq "XML::Stream::Parser");
-  my ($sax, $cdata) = @_;
-  my $sid = $sax->getSID();
+sub _handle_cdata
+{
+    my $self;
+    $self = $_[0] if (ref($_[0]) eq "XML::Stream::Parser");
+    $self = shift unless (ref($_[0]) eq "XML::Stream::Parser");
+    my ($sax, $cdata) = @_;
+    my $sid = $sax->getSID();
 
-  $self->debug(2,"Node: _handle_cdata: sid($sid) sax($sax) cdata($cdata)");
+    $self->debug(2,"Node: _handle_cdata: sid($sid) sax($sax) cdata($cdata)");
 
-  return if ($#{$self->{SIDS}->{$sid}->{node}} == -1);
+    return if ($#{$self->{SIDS}->{$sid}->{node}} == -1);
 
-  my $unicode = new Unicode::String();
-  $unicode->utf8($cdata);
-  $cdata = $unicode->latin1;
+    $self->debug(2,"Node: _handle_cdata: sax($sax) cdata($cdata)");
 
-  $self->debug(2,"Node: _handle_cdata: sax($sax) cdata($cdata)");
-
-  $self->{SIDS}->{$sid}->{node}->[$#{$self->{SIDS}->{$sid}->{node}}]->
-    add_cdata($cdata);
+    $self->{SIDS}->{$sid}->{node}->[$#{$self->{SIDS}->{$sid}->{node}}]->
+        add_cdata($cdata);
 }
 
 
@@ -343,43 +447,51 @@ sub _handle_cdata {
 #                      element.  This is how we build our hierarchy.
 #
 ##############################################################################
-sub _handle_close {
-  my $self;
-  $self = $_[0] if (ref($_[0]) eq "XML::Stream::Parser");
-  $self = shift unless (ref($_[0]) eq "XML::Stream::Parser");
-  my ($sax, $tag) = @_;
-  my $sid = $sax->getSID();
+sub _handle_close
+{
+    my $self;
+    $self = $_[0] if (ref($_[0]) eq "XML::Stream::Parser");
+    $self = shift unless (ref($_[0]) eq "XML::Stream::Parser");
+    my ($sax, $tag) = @_;
+    my $sid = $sax->getSID();
 
-  $self->debug(2,"Node: _handle_close: sid($sid) sax($sax) tag($tag)");
+    $self->debug(2,"Node: _handle_close: sid($sid) sax($sax) tag($tag)");
 
-  $self->debug(2,"Node: _handle_close: check(",$#{$self->{SIDS}->{$sid}->{node}},")");
+    $self->debug(2,"Node: _handle_close: check(",$#{$self->{SIDS}->{$sid}->{node}},")");
 
-  if ($#{$self->{SIDS}->{$sid}->{node}} == -1) {
-    $self->debug(2,"Node: _handle_close: rootTag($self->{SIDS}->{$sid}->{rootTag}) tag($tag)");
-    if ($self->{SIDS}->{$sid}->{rootTag} ne $tag) {
-      $self->{SIDS}->{$sid}->{streamerror} = "Root tag mis-match: <$self->{SIDS}->{$sid}->{rootTag}> ... </$tag>\n";
+    if ($#{$self->{SIDS}->{$sid}->{node}} == -1)
+    {
+        $self->debug(2,"Node: _handle_close: rootTag($self->{SIDS}->{$sid}->{rootTag}) tag($tag)");
+        if ($self->{SIDS}->{$sid}->{rootTag} ne $tag)
+        {
+            $self->{SIDS}->{$sid}->{streamerror} = "Root tag mis-match: <$self->{SIDS}->{$sid}->{rootTag}> ... </$tag>\n";
+        }
+        return;
     }
-    return;
-  }
 
-  my $CLOSED = pop @{$self->{SIDS}->{$sid}->{node}};
+    my $CLOSED = pop @{$self->{SIDS}->{$sid}->{node}};
 
-  if($#{$self->{SIDS}->{$sid}->{node}} == -1) {
+    if($#{$self->{SIDS}->{$sid}->{node}} == -1)
+    {
 
-    push @{$self->{SIDS}->{$sid}->{node}}, $CLOSED;
+        push @{$self->{SIDS}->{$sid}->{node}}, $CLOSED;
 
-    if(defined($self->{SIDS}->{$sid}->{node}->[0]) &&
-       ($self->{SIDS}->{$sid}->{node}->[0]->get_tag() eq "stream:error")) {
-      $self->{SIDS}->{$sid}->{streamerror} =
-	$self->{SIDS}->{$sid}->{node}->[0]->get_cdata();
-    } else {
-      if (ref($self) ne "XML::Stream::Parser") {
-	my $node = $self->{SIDS}->{$sid}->{node}->[0];
-	$self->{SIDS}->{$sid}->{node} = [];
-	&{$self->{CB}->{node}}($sid,$node);
-      }
+        if(defined($self->{SIDS}->{$sid}->{node}->[0]) &&
+           ($self->{SIDS}->{$sid}->{node}->[0]->get_tag() eq "stream:error"))
+        {
+            $self->{SIDS}->{$sid}->{streamerror} =
+                $self->{SIDS}->{$sid}->{node}->[0]->get_cdata();
+        }
+        else
+        {
+            if (ref($self) ne "XML::Stream::Parser")
+            {
+                my $node = $self->{SIDS}->{$sid}->{node}->[0];
+                $self->{SIDS}->{$sid}->{node} = [];
+                &{$self->{CB}->{node}}($sid,$node);
+            }
+        }
     }
-  }
 }
 
 
@@ -401,29 +513,36 @@ sub _handle_close {
 #              attribs - attributes to ADD to tag
 #
 ##############################################################################
-sub SetXMLData {
-  my ($type,$XMLTree,$tag,$data,$attribs) = @_;
+sub SetXMLData
+{
+    my ($type,$XMLTree,$tag,$data,$attribs) = @_;
 
-  if ($tag ne "") {
-    if ($type eq "single") {
-      foreach my $child ($XMLTree->children()) {
-	if ($$XMLTree[1]->[$child] eq $tag) {
-	  $XMLTree->remove_child($child);
+    if ($tag ne "")
+    {
+        if ($type eq "single")
+        {
+            foreach my $child ($XMLTree->children())
+            {
+                if ($$XMLTree[1]->[$child] eq $tag)
+                {
+                    $XMLTree->remove_child($child);
 
-	  my $newChild = $XMLTree->add_child($tag);
-	  $newChild->put_attrib(%{$attribs});
-	  $newChild->add_cdata($data) if ($data ne "");
-	  return;
-	}
-      }
+                    my $newChild = $XMLTree->add_child($tag);
+                    $newChild->put_attrib(%{$attribs});
+                    $newChild->add_cdata($data) if ($data ne "");
+                    return;
+                }
+            }
+        }
+        my $newChild = $XMLTree->add_child($tag);
+        $newChild->put_attrib(%{$attribs});
+        $newChild->add_cdata($data) if ($data ne "");
     }
-    my $newChild = $XMLTree->add_child($tag);
-    $newChild->put_attrib(%{$attribs});
-    $newChild->add_cdata($data) if ($data ne "");
-  } else {
-    $XMLTree->put_attrib(%{$attribs});
-    $XMLTree->add_cdata($data) if ($data ne "");
-  }
+    else
+    {
+        $XMLTree->put_attrib(%{$attribs});
+        $XMLTree->add_cdata($data) if ($data ne "");
+    }
 }
 
 
@@ -447,9 +566,8 @@ sub SetXMLData {
 #                     "tree array" - returns an array of XML::Parser::Node
 #                                    objects each with the specified tag as
 #                                    the root tag.
-#                     "index array" - returns a list of all of the tags,
-#                                     and the indexes into the array:
-#                                     (foo,1,bar,3,test,7,etc...)
+#                     "child array" - returns a list of all children nodes
+#                                     not including CDATA nodes.
 #                     "attribs" - returns a hash with the attributes, and
 #                                 their values, for the things that match
 #                                 the parameters
@@ -469,163 +587,192 @@ sub SetXMLData {
 #                        reference different name spaces.
 #
 ##############################################################################
-sub GetXMLData {
-  my ($type,$XMLTree,$tag,$attrib,$value) = @_;
+sub GetXMLData
+{
+    my ($type,$XMLTree,$tag,$attrib,$value) = @_;
 
-  $tag = "" if !defined($tag);
-  $attrib = "" if !defined($attrib);
-  $value = "" if !defined($value);
+    $tag = "" if !defined($tag);
+    $attrib = "" if !defined($attrib);
+    $value = "" if !defined($value);
 
-  my $skipthis = 0;
+    my $skipthis = 0;
 
-  #---------------------------------------------------------------------------
-  # Check if a child tag in the root tag is being requested.
-  #---------------------------------------------------------------------------
-  if ($tag ne "") {
-    my $count = 0;
-    my @array;
-    foreach my $child ($XMLTree->children()) {
-      if (($child->get_tag() eq $tag) || ($tag eq "*")) {
+    #-------------------------------------------------------------------------
+    # Check if a child tag in the root tag is being requested.
+    #-------------------------------------------------------------------------
+    if ($tag ne "")
+    {
+        my $count = 0;
+        my @array;
+        foreach my $child ($XMLTree->children())
+        {
+            if (($child->get_tag() eq $tag) || ($tag eq "*"))
+            {
+                #-------------------------------------------------------------
+                # Filter out tags that do not contain the attribute and value.
+                #-------------------------------------------------------------
+                next if (($value ne "") && ($attrib ne "") && $child->get_attrib($attrib) && ($XMLTree->get_attrib($attrib) ne $value));
+                next if (($attrib ne "") && !$child->get_attrib($attrib));
+
+                #-------------------------------------------------------------
+                # Check for existence
+                #-------------------------------------------------------------
+                if ($type eq "existence")
+                {
+                    return 1;
+                }
+                #-------------------------------------------------------------
+                # Return the raw CDATA value without mark ups, or the value of
+                # the requested attribute.
+                #-------------------------------------------------------------
+                if ($type eq "value")
+                {
+                    if ($attrib eq "")
+                    {
+                        my $str = $child->get_cdata();
+                        return $str;
+                    }
+                    return $XMLTree->get_attrib($attrib)
+                        if defined($XMLTree->get_attrib($attrib));
+                }
+                #-------------------------------------------------------------
+                # Return an array of values that represent the raw CDATA without
+                # mark up tags for the requested tags.
+                #-------------------------------------------------------------
+                if ($type eq "value array")
+                {
+                    if ($attrib eq "")
+                    {
+                        my $str = $child->get_cdata();
+                        push(@array,$str);
+                    }
+                    else
+                    {
+                        push(@array, $XMLTree->get_attrib($attrib))
+                        if defined($XMLTree->get_attrib($attrib));
+                    }
+                }
+                #-------------------------------------------------------------
+                # Return a pointer to a new XML::Parser::Tree object that has
+                # the requested tag as the root tag.
+                #-------------------------------------------------------------
+                if ($type eq "tree")
+                {
+                    return $child;
+                }
+                #-------------------------------------------------------------
+                # Return an array of pointers to XML::Parser::Tree objects
+                # that have the requested tag as the root tags.
+                #-------------------------------------------------------------
+                if ($type eq "tree array")
+                {
+                    push(@array,$child);
+                }
+                #-------------------------------------------------------------
+                # Return an array of pointers to XML::Parser::Tree objects
+                # that have the requested tag as the root tags.
+                #-------------------------------------------------------------
+                if ($type eq "child array")
+                {
+                    push(@array,$child) if ($child->get_tag() ne "__xmlstream__:node:cdata");
+                }
+                #-------------------------------------------------------------
+                # Return a count of the number of tags that match
+                #-------------------------------------------------------------
+                if ($type eq "count")
+                {
+                    $count++;
+                }
+                #-------------------------------------------------------------
+                # Return the attribute hash that matches this tag
+                #-------------------------------------------------------------
+                if ($type eq "attribs")
+                {
+                    return $XMLTree->attrib();
+                }
+            }
+        }
         #---------------------------------------------------------------------
-        # Filter out tags that do not contain the attribute and value.
+        # If we are returning arrays then return array.
         #---------------------------------------------------------------------
-	next if (($value ne "") && ($attrib ne "") && $child->get_attrib($attrib) && ($XMLTree->get_attrib($attrib) ne $value));
-	next if (($attrib ne "") && !$child->get_attrib($attrib));
+        if (($type eq "tree array") || ($type eq "value array") ||
+            ($type eq "child array"))
+        {
+            return @array;
+        }
 
         #---------------------------------------------------------------------
-	# Check for existence
+        # If we are returning then count, then do so
         #---------------------------------------------------------------------
-	if ($type eq "existence") {
-	  return 1;
-	}
+        if ($type eq "count")
+        {
+            return $count;
+        }
+    }
+    else
+    {
         #---------------------------------------------------------------------
-	# Return the raw CDATA value without mark ups, or the value of the
+        # This is the root tag, so handle things a level up.
+        #---------------------------------------------------------------------
+
+        #---------------------------------------------------------------------
+        # Return the raw CDATA value without mark ups, or the value of the
         # requested attribute.
         #---------------------------------------------------------------------
-	if ($type eq "value") {
-	  if ($attrib eq "") {
-	    my $str = $child->get_cdata();
-	    return $str;
-	  }
-	  return $XMLTree->get_attrib($attrib)
-	    if defined($XMLTree->get_attrib($attrib));
-	}
+        if ($type eq "value")
+        {
+            if ($attrib eq "")
+            {
+                my $str = $XMLTree->get_cdata();
+                return $str;
+            }
+            return $XMLTree->get_attrib($attrib)
+                if $XMLTree->get_attrib($attrib);
+        }
         #---------------------------------------------------------------------
-	# Return an array of values that represent the raw CDATA without
-        # mark up tags for the requested tags.
-        #---------------------------------------------------------------------
-	if ($type eq "value array") {
-	  if ($attrib eq "") {
-	    my $str = $child->get_cdata();
-	    push(@array,$str);
-	  } else {
-	    push(@array, $XMLTree->get_attrib($attrib))
-	      if defined($XMLTree->get_attrib($attrib));
-	  }
-	}
-        #---------------------------------------------------------------------
-	# Return a pointer to a new XML::Parser::Tree object that has the
+        # Return a pointer to a new XML::Parser::Tree object that has the
         # requested tag as the root tag.
         #---------------------------------------------------------------------
-	if ($type eq "tree") {
-	  return $child;
-	}
-        #---------------------------------------------------------------------
-	# Return an array of pointers to XML::Parser::Tree objects that have
-        # the requested tag as the root tags.
-        #---------------------------------------------------------------------
-	if ($type eq "tree array") {
-	  push(@array,$child);
-	}
-        #---------------------------------------------------------------------
-	# Return a count of the number of tags that match
-        #---------------------------------------------------------------------
-	if ($type eq "count") {
-	  $count++;
-	}
-        #---------------------------------------------------------------------
-	# Return a count of the number of tags that match
-        #---------------------------------------------------------------------
-	if ($type eq "index array") {
-	}
-        #---------------------------------------------------------------------
-	# Return the attribute hash that matches this tag
-        #---------------------------------------------------------------------
-	if ($type eq "attribs") {
-	  return $XMLTree->attrib();
-	}
-      }
-    }
-    #-------------------------------------------------------------------------
-    # If we are returning arrays then return array.
-    #-------------------------------------------------------------------------
-    if (($type eq "tree array") || ($type eq "value array") ||
-        ($type eq "index array")) {
-      return @array;
-    }
+        if ($type eq "tree")
+        {
+            return $XMLTree;
+        }
 
-    #-------------------------------------------------------------------------
-    # If we are returning then count, then do so
-    #-------------------------------------------------------------------------
-    if ($type eq "count") {
-      return $count;
-    }
-  } else {
-    #-------------------------------------------------------------------------
-    # This is the root tag, so handle things a level up.
-    #-------------------------------------------------------------------------
+        #---------------------------------------------------------------------
+        # Return the 1 if the specified attribute exists in the root tag.
+        #---------------------------------------------------------------------
+        if ($type eq "existence")
+        {
+            if ($attrib ne "")
+            {
+                return ($XMLTree->get_attrib($attrib) eq $value) if ($value ne "");
+                return defined($XMLTree->get_attrib($attrib));
+            }
+            return 0;
+        }
 
-    #-------------------------------------------------------------------------
-    # Return the raw CDATA value without mark ups, or the value of the
-    # requested attribute.
-    #-------------------------------------------------------------------------
-    if ($type eq "value") {
-      if ($attrib eq "") {
-	my $str = $XMLTree->get_cdata();
-	return $str;
-      }
-      return $XMLTree->get_attrib($attrib)
-        if $XMLTree->get_attrib($attrib);
+        #---------------------------------------------------------------------
+        # Return the attribute hash that matches this tag
+        #---------------------------------------------------------------------
+        if ($type eq "attribs")
+        {
+            return $XMLTree->attrib();
+        }
+        #---------------------------------------------------------------------
+        # Return the tag of this node
+        #---------------------------------------------------------------------
+        if ($type eq "tag")
+        {
+            return $XMLTree->get_tag();
+        }
     }
     #-------------------------------------------------------------------------
-    # Return a pointer to a new XML::Parser::Tree object that has the
-    # requested tag as the root tag.
+    # Return 0 if this was a request for existence, or "" if a request for
+    # a "value", or [] for "tree", "value array", and "tree array".
     #-------------------------------------------------------------------------
-    if ($type eq "tree") {
-      return $XMLTree;
-    }
-
-    #-------------------------------------------------------------------------
-    # Return the 1 if the specified attribute exists in the root tag.
-    #-------------------------------------------------------------------------
-    if ($type eq "existence") {
-      if ($attrib ne "") {
-	return ($XMLTree->get_attrib($attrib) eq $value) if ($value ne "");
-	return defined($XMLTree->get_attrib($attrib));
-      }
-      return 0;
-    }
-
-    #-------------------------------------------------------------------------
-    # Return the attribute hash that matches this tag
-    #-------------------------------------------------------------------------
-    if ($type eq "attribs") {
-      return $XMLTree->attrib();
-    }
-    #-------------------------------------------------------------------------
-    # Return the tag of this node
-    #-------------------------------------------------------------------------
-    if ($type eq "tag") {
-      return $XMLTree->get_tag();
-    }
-  }
-  #---------------------------------------------------------------------------
-  # Return 0 if this was a request for existence, or "" if a request for
-  # a "value", or [] for "tree", "value array", and "tree array".
-  #---------------------------------------------------------------------------
-  return 0 if ($type eq "existence");
-  return "" if ($type eq "value");
-  return [];
+    return 0 if ($type eq "existence");
+    return "" if ($type eq "value");
+    return [];
 }
 
 
@@ -635,33 +782,43 @@ sub GetXMLData {
 #                 that it represents.
 #
 ##############################################################################
-sub BuildXML {
-  my ($node) = @_;
+sub BuildXML
+{
+    my ($node,$rawXML) = @_;
 
-  my $str = "<".$node->get_tag();
+    my $str = "<".$node->get_tag();
 
-  my %attrib = $node->attrib();
+    my %attrib = $node->attrib();
 
-  foreach my $att (keys(%attrib)) {
-    $str .= " ".$att."='".&XML::Stream::EscapeXML($attrib{$att})."'";
-  }
-
-  my @children = $node->children();
-  if ($#children == -1) {
-    $str .= "/>";
-  } else {
-    $str .= ">";
-    foreach my $child (@children) {
-      if ($child->get_tag() eq "__xmlstream__:node:cdata") {
-	$str .= join("",$child->children());
-      } else {
-	$str .= &XML::Stream::Node::BuildXML($child);
-      }
+    foreach my $att (sort {$a cmp $b} keys(%attrib))
+    {
+        $str .= " ".$att."='".&XML::Stream::EscapeXML($attrib{$att})."'";
     }
-    $str .= "</".$node->get_tag().">";
-  }
 
-  return $str;
+    my @children = $node->children();
+    if (($#children > -1) || (defined($rawXML) && ($rawXML ne "")))
+    {
+        $str .= ">";
+        foreach my $child (@children)
+        {
+            if ($child->get_tag() eq "__xmlstream__:node:cdata")
+            {
+                $str .= &XML::Stream::EscapeXML(join("",$child->children()));
+            }
+            else
+            {
+                $str .= &XML::Stream::Node::BuildXML($child);
+            }
+        }
+        $str .= $rawXML if (defined($rawXML) && ($rawXML ne ""));
+        $str .= "</".$node->get_tag().">";
+    }
+    else
+    {
+        $str .= "/>";
+    }
+
+    return $str;
 }
 
 
@@ -687,23 +844,31 @@ sub BuildXML {
 #              Good for config files.
 #
 ##############################################################################
-sub XML2Config {
-  my ($XMLTree) = @_;
+sub XML2Config
+{
+    my ($XMLTree) = @_;
 
-  my %hash;
-  foreach my $tree (&XML::Stream::GetXMLData("tree array",$XMLTree,"*")) {
-    if ($tree->get_tag() eq "__xmlstream__:node:cdata") {
-      my $str = join("",$tree->children());
-      return $str unless ($str =~ /^\s*$/);
-    } else {
-      if (&XML::Stream::GetXMLData("count",$XMLTree,$tree->get_tag()) > 1) {
-	push(@{$hash{$tree->get_tag()}},&XML::Stream::XML2Config($tree));
-      } else {
-	$hash{$tree->get_tag()} = &XML::Stream::XML2Config($tree);
-      }
+    my %hash;
+    foreach my $tree (&XML::Stream::GetXMLData("tree array",$XMLTree,"*"))
+    {
+        if ($tree->get_tag() eq "__xmlstream__:node:cdata")
+        {
+            my $str = join("",$tree->children());
+            return $str unless ($str =~ /^\s*$/);
+        }
+        else
+        {
+            if (&XML::Stream::GetXMLData("count",$XMLTree,$tree->get_tag()) > 1)
+            {
+                push(@{$hash{$tree->get_tag()}},&XML::Stream::XML2Config($tree));
+            }
+            else
+            {
+                $hash{$tree->get_tag()} = &XML::Stream::XML2Config($tree);
+            }
+        }
     }
-  }
-  return \%hash;
+    return \%hash;
 }
 
 

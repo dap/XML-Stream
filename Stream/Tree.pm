@@ -72,7 +72,7 @@ it under the same terms as Perl itself.
 
 use vars qw($VERSION);
 
-$VERSION = "1.15";
+$VERSION = "1.16";
 
 ##############################################################################
 #
@@ -82,23 +82,27 @@ $VERSION = "1.15";
 #                   and tags to it later.
 #
 ##############################################################################
-sub _handle_element {
-  my $self;
-  $self = $_[0] if (ref($_[0]) eq "XML::Stream::Parser");
-  $self = shift unless (ref($_[0]) eq "XML::Stream::Parser");
-  my ($sax, $tag, %att) = @_;
-  my $sid = $sax->getSID();
+sub _handle_element
+{
+    my $self;
+    $self = $_[0] if (ref($_[0]) eq "XML::Stream::Parser");
+    $self = shift unless (ref($_[0]) eq "XML::Stream::Parser");
+    my ($sax, $tag, %att) = @_;
+    my $sid = $sax->getSID();
 
-  $self->debug(2,"_handle_element: sid($sid) sax($sax) tag($tag) att(",%att,")");
+    $self->debug(2,"_handle_element: sid($sid) sax($sax) tag($tag) att(",%att,")");
 
-  my @NEW;
-  if($#{$self->{SIDS}->{$sid}->{tree}} < 0) {
-    push @{$self->{SIDS}->{$sid}->{tree}}, $tag;
-  } else {
-    push @{ $self->{SIDS}->{$sid}->{tree}[ $#{$self->{SIDS}->{$sid}->{tree}}]}, $tag;
-  }
-  push @NEW, \%att;
-  push @{$self->{SIDS}->{$sid}->{tree}}, \@NEW;
+    my @NEW;
+    if($#{$self->{SIDS}->{$sid}->{tree}} < 0)
+    {
+        push @{$self->{SIDS}->{$sid}->{tree}}, $tag;
+    }
+    else
+    {
+        push @{ $self->{SIDS}->{$sid}->{tree}[ $#{$self->{SIDS}->{$sid}->{tree}}]}, $tag;
+    }
+    push @NEW, \%att;
+    push @{$self->{SIDS}->{$sid}->{tree}}, \@NEW;
 }
 
 
@@ -109,34 +113,34 @@ sub _handle_element {
 #                      CDATA into one tag.
 #
 ##############################################################################
-sub _handle_cdata {
-  my $self;
-  $self = $_[0] if (ref($_[0]) eq "XML::Stream::Parser");
-  $self = shift unless (ref($_[0]) eq "XML::Stream::Parser");
-  my ($sax, $cdata) = @_;
-  my $sid = $sax->getSID();
+sub _handle_cdata
+{
+    my $self;
+    $self = $_[0] if (ref($_[0]) eq "XML::Stream::Parser");
+    $self = shift unless (ref($_[0]) eq "XML::Stream::Parser");
+    my ($sax, $cdata) = @_;
+    my $sid = $sax->getSID();
 
-  $self->debug(2,"_handle_cdata: sid($sid) sax($sax) cdata($cdata)");
+    $self->debug(2,"_handle_cdata: sid($sid) sax($sax) cdata($cdata)");
 
-  return if ($#{$self->{SIDS}->{$sid}->{tree}} == -1);
+    return if ($#{$self->{SIDS}->{$sid}->{tree}} == -1);
 
-  my $unicode = new Unicode::String();
-  $unicode->utf8($cdata);
-  $cdata = $unicode->latin1;
+    $self->debug(2,"_handle_cdata: sax($sax) cdata($cdata)");
 
-  $self->debug(2,"_handle_cdata: sax($sax) cdata($cdata)");
+    my $pos = $#{$self->{SIDS}->{$sid}->{tree}};
+    $self->debug(2,"_handle_cdata: pos($pos)");
 
-  my $pos = $#{$self->{SIDS}->{$sid}->{tree}};
-  $self->debug(2,"_handle_cdata: pos($pos)");
-
-  if ($pos > 0 && $self->{SIDS}->{$sid}->{tree}[$pos - 1] eq "0") {
-    $self->debug(2,"_handle_cdata: append cdata");
-    $self->{SIDS}->{$sid}->{tree}[$pos - 1] .= $cdata;
-  } else {
-    $self->debug(2,"_handle_cdata: new cdata");
-    push @{$self->{SIDS}->{$sid}->{tree}[$#{$self->{SIDS}->{$sid}->{tree}}]}, 0;
-    push @{$self->{SIDS}->{$sid}->{tree}[$#{$self->{SIDS}->{$sid}->{tree}}]}, $cdata;
-  }	
+    if ($pos > 0 && $self->{SIDS}->{$sid}->{tree}[$pos - 1] eq "0")
+    {
+        $self->debug(2,"_handle_cdata: append cdata");
+        $self->{SIDS}->{$sid}->{tree}[$pos - 1] .= $cdata;
+    }
+    else
+    {
+        $self->debug(2,"_handle_cdata: new cdata");
+        push @{$self->{SIDS}->{$sid}->{tree}[$#{$self->{SIDS}->{$sid}->{tree}}]}, 0;
+        push @{$self->{SIDS}->{$sid}->{tree}[$#{$self->{SIDS}->{$sid}->{tree}}]}, $cdata;
+    }  
 }
 
 
@@ -147,44 +151,54 @@ sub _handle_cdata {
 #                      element.  This is how we build our hierarchy.
 #
 ##############################################################################
-sub _handle_close {
-  my $self;
-  $self = $_[0] if (ref($_[0]) eq "XML::Stream::Parser");
-  $self = shift unless (ref($_[0]) eq "XML::Stream::Parser");
-  my ($sax, $tag) = @_;
-  my $sid = $sax->getSID();
+sub _handle_close
+{
+    my $self;
+    $self = $_[0] if (ref($_[0]) eq "XML::Stream::Parser");
+    $self = shift unless (ref($_[0]) eq "XML::Stream::Parser");
+    my ($sax, $tag) = @_;
+    my $sid = $sax->getSID();
 
-  $self->debug(2,"_handle_close: sid($sid) sax($sax) tag($tag)");
+    $self->debug(2,"_handle_close: sid($sid) sax($sax) tag($tag)");
 
-  my $CLOSED = pop @{$self->{SIDS}->{$sid}->{tree}};
+    my $CLOSED = pop @{$self->{SIDS}->{$sid}->{tree}};
 
-  $self->debug(2,"_handle_close: check(",$#{$self->{SIDS}->{$sid}->{tree}},")");
+    $self->debug(2,"_handle_close: check(",$#{$self->{SIDS}->{$sid}->{tree}},")");
 
-  if ($#{$self->{SIDS}->{$sid}->{tree}} == -1) {
-    if ($self->{SIDS}->{$sid}->{rootTag} ne $tag) {
-      $self->{SIDS}->{$sid}->{streamerror} = "Root tag mis-match: <$self->{SIDS}->{$sid}->{rootTag}> ... </$tag>\n";
+    if ($#{$self->{SIDS}->{$sid}->{tree}} == -1)
+    {
+        if ($self->{SIDS}->{$sid}->{rootTag} ne $tag)
+        {
+            $self->{SIDS}->{$sid}->{streamerror} = "Root tag mis-match: <$self->{SIDS}->{$sid}->{rootTag}> ... </$tag>\n";
+        }
+        return;
     }
-    return;
-  }
 
-  if($#{$self->{SIDS}->{$sid}->{tree}} < 1) {
+    if($#{$self->{SIDS}->{$sid}->{tree}} < 1)
+    {
 
-    push @{$self->{SIDS}->{$sid}->{tree}}, $CLOSED;
+        push @{$self->{SIDS}->{$sid}->{tree}}, $CLOSED;
 
-    if(defined($self->{SIDS}->{$sid}->{tree}->[0]) &&
-       ($self->{SIDS}->{$sid}->{tree}->[0] eq "stream:error")) {
-      $self->{SIDS}->{$sid}->{streamerror} =
-	$self->{SIDS}->{$sid}->{tree}[1]->[2];
-    } else {
-      if (ref($self) ne "XML::Stream::Parser") {
-	my @tree = @{$self->{SIDS}->{$sid}->{tree}};
-	$self->{SIDS}->{$sid}->{tree} = [];
-	&{$self->{CB}->{node}}($sid,@tree);
-      }
+        if(defined($self->{SIDS}->{$sid}->{tree}->[0]) &&
+           ($self->{SIDS}->{$sid}->{tree}->[0] eq "stream:error"))
+        {
+            $self->{SIDS}->{$sid}->{streamerror} =
+                $self->{SIDS}->{$sid}->{tree}[1]->[2];
+        }
+        else
+        {
+            if (ref($self) ne "XML::Stream::Parser")
+            {
+                my @tree = @{$self->{SIDS}->{$sid}->{tree}};
+                $self->{SIDS}->{$sid}->{tree} = [];
+                &{$self->{CB}->{node}}($sid,@tree);
+            }
+        }
     }
-  } else {
-    push @{$self->{SIDS}->{$sid}->{tree}[$#{$self->{SIDS}->{$sid}->{tree}}]}, $CLOSED;
-  }
+    else
+    {
+        push @{$self->{SIDS}->{$sid}->{tree}[$#{$self->{SIDS}->{$sid}->{tree}}]}, $CLOSED;
+    }
 }
 
 
@@ -206,50 +220,66 @@ sub _handle_close {
 #              attribs - attributes to ADD to tag
 #
 ##############################################################################
-sub SetXMLData {
-  my ($type,$XMLTree,$tag,$data,$attribs) = @_;
-  my ($key);
+sub SetXMLData
+{
+    my ($type,$XMLTree,$tag,$data,$attribs) = @_;
+    my ($key);
 
-  if ($tag ne "") {
-    if ($type eq "single") {
-      my ($child);
-      foreach $child (1..$#{$$XMLTree[1]}) {
-	if ($$XMLTree[1]->[$child] eq $tag) {
-	  if ($data ne "") {
-	    #todo: add code to handle writing the cdata again and appending it.
-	    $$XMLTree[1]->[$child+1]->[1] = 0;
-	    $$XMLTree[1]->[$child+1]->[2] = $data;
-	  }
-	  foreach $key (keys(%{$attribs})) {
-	    $$XMLTree[1]->[$child+1]->[0]->{$key} = $$attribs{$key};
-	  }
-	  return;
-	}
-      }
+    if ($tag ne "")
+    {
+        if ($type eq "single")
+        {
+            my ($child);
+            foreach $child (1..$#{$$XMLTree[1]})
+            {
+                if ($$XMLTree[1]->[$child] eq $tag)
+                {
+                    if ($data ne "")
+                    {
+                        #todo: add code to handle writing the cdata again and appending it.
+                        $$XMLTree[1]->[$child+1]->[1] = 0;
+                        $$XMLTree[1]->[$child+1]->[2] = $data;
+                    }
+                    foreach $key (keys(%{$attribs}))
+                    {
+                        $$XMLTree[1]->[$child+1]->[0]->{$key} = $$attribs{$key};
+                    }
+                    return;
+                }
+            }
+        }
+        $$XMLTree[1]->[($#{$$XMLTree[1]}+1)] = $tag;
+        $$XMLTree[1]->[($#{$$XMLTree[1]}+1)]->[0] = {};
+        foreach $key (keys(%{$attribs}))
+        {
+            $$XMLTree[1]->[$#{$$XMLTree[1]}]->[0]->{$key} = $$attribs{$key};
+        }
+        if ($data ne "")
+        {
+            $$XMLTree[1]->[$#{$$XMLTree[1]}]->[1] = 0;
+            $$XMLTree[1]->[$#{$$XMLTree[1]}]->[2] = $data;
+        }
     }
-    $$XMLTree[1]->[($#{$$XMLTree[1]}+1)] = $tag;
-    $$XMLTree[1]->[($#{$$XMLTree[1]}+1)]->[0] = {};
-    foreach $key (keys(%{$attribs})) {
-      $$XMLTree[1]->[$#{$$XMLTree[1]}]->[0]->{$key} = $$attribs{$key};
+    else
+    {
+        foreach $key (keys(%{$attribs}))
+        {
+            $$XMLTree[1]->[0]->{$key} = $$attribs{$key};
+        }
+        if ($data ne "")
+        {
+            if (($#{$$XMLTree[1]} > 0) &&
+                ($$XMLTree[1]->[($#{$$XMLTree[1]}-1)] eq "0"))
+            {
+                $$XMLTree[1]->[$#{$$XMLTree[1]}] .= $data;
+            }
+            else
+            {
+                $$XMLTree[1]->[($#{$$XMLTree[1]}+1)] = 0;
+                $$XMLTree[1]->[($#{$$XMLTree[1]}+1)] = $data;
+            }
+        }
     }
-    if ($data ne "") {
-      $$XMLTree[1]->[$#{$$XMLTree[1]}]->[1] = 0;
-      $$XMLTree[1]->[$#{$$XMLTree[1]}]->[2] = $data;
-    }
-  } else {
-    foreach $key (keys(%{$attribs})) {
-      $$XMLTree[1]->[0]->{$key} = $$attribs{$key};
-    }
-    if ($data ne "") {
-      if (($#{$$XMLTree[1]} > 0) &&
-	  ($$XMLTree[1]->[($#{$$XMLTree[1]}-1)] eq "0")) {
-	$$XMLTree[1]->[$#{$$XMLTree[1]}] .= $data;
-      } else {
-	$$XMLTree[1]->[($#{$$XMLTree[1]}+1)] = 0;
-	$$XMLTree[1]->[($#{$$XMLTree[1]}+1)] = $data;
-      }
-    }
-  }
 }
 
 
@@ -273,9 +303,8 @@ sub SetXMLData {
 #                     "tree array" - returns an array of XML::Parser::Tree
 #                                    objects each with the specified tag as
 #                                    the root tag.
-#                     "index array" - returns a list of all of the tags,
-#                                     and the indexes into the array:
-#                                     (foo,1,bar,3,test,7,etc...)
+#                     "child array" - returns a list of all children nodes
+#                                     not including CDATA nodes.
 #                     "attribs" - returns a hash with the attributes, and
 #                                 their values, for the things that match
 #                                 the parameters
@@ -295,202 +324,235 @@ sub SetXMLData {
 #                        reference different name spaces.
 #
 ##############################################################################
-sub GetXMLData {
-  my ($type,$XMLTree,$tag,$attrib,$value) = @_;
+sub GetXMLData
+{
+    my ($type,$XMLTree,$tag,$attrib,$value) = @_;
 
-  $tag = "" if !defined($tag);
-  $attrib = "" if !defined($attrib);
-  $value = "" if !defined($value);
+    $tag = "" if !defined($tag);
+    $attrib = "" if !defined($attrib);
+    $value = "" if !defined($value);
 
-  my $skipthis = 0;
+    my $skipthis = 0;
 
-  #---------------------------------------------------------------------------
-  # Check if a child tag in the root tag is being requested.
-  #---------------------------------------------------------------------------
-  if ($tag ne "") {
-    my $count = 0;
-    my @array;
-    foreach my $child (1..$#{$$XMLTree[1]}) {
-      next if (($child/2) !~ /\./);
-      if (($$XMLTree[1]->[$child] eq $tag) || ($tag eq "*")) {
-	next if (ref($$XMLTree[1]->[$child]) eq "ARRAY");
+    #---------------------------------------------------------------------------
+    # Check if a child tag in the root tag is being requested.
+    #---------------------------------------------------------------------------
+    if ($tag ne "")
+    {
+        my $count = 0;
+        my @array;
+        foreach my $child (1..$#{$$XMLTree[1]})
+        {
+            next if (($child/2) !~ /\./);
+            if (($$XMLTree[1]->[$child] eq $tag) || ($tag eq "*"))
+            {
+                next if (ref($$XMLTree[1]->[$child]) eq "ARRAY");
 
-        #---------------------------------------------------------------------
-        # Filter out tags that do not contain the attribute and value.
-        #---------------------------------------------------------------------
-	next if (($value ne "") && ($attrib ne "") && exists($$XMLTree[1]->[$child+1]->[0]->{$attrib}) && ($$XMLTree[1]->[$child+1]->[0]->{$attrib} ne $value));
-	next if (($attrib ne "") && ((ref($$XMLTree[1]->[$child+1]) ne "ARRAY") || !exists($$XMLTree[1]->[$child+1]->[0]->{$attrib})));
+                #---------------------------------------------------------------------
+                # Filter out tags that do not contain the attribute and value.
+                #---------------------------------------------------------------------
+                next if (($value ne "") && ($attrib ne "") && exists($$XMLTree[1]->[$child+1]->[0]->{$attrib}) && ($$XMLTree[1]->[$child+1]->[0]->{$attrib} ne $value));
+                next if (($attrib ne "") && ((ref($$XMLTree[1]->[$child+1]) ne "ARRAY") || !exists($$XMLTree[1]->[$child+1]->[0]->{$attrib})));
 
-        #---------------------------------------------------------------------
-	# Check for existence
-        #---------------------------------------------------------------------
-	if ($type eq "existence") {
-	  return 1;
-	}
-        #---------------------------------------------------------------------
-	# Return the raw CDATA value without mark ups, or the value of the
+                #---------------------------------------------------------------------
+                # Check for existence
+                #---------------------------------------------------------------------
+                if ($type eq "existence")
+                {
+                    return 1;
+                }
+                
+                #---------------------------------------------------------------------
+                # Return the raw CDATA value without mark ups, or the value of the
+                # requested attribute.
+                #---------------------------------------------------------------------
+                if ($type eq "value")
+                {
+                    if ($attrib eq "")
+                    {
+                        my $str = "";
+                        my $next = 0;
+                        my $index;
+                        foreach $index (1..$#{$$XMLTree[1]->[$child+1]}) {
+                            if ($next == 1) { $next = 0; next; }
+                            if ($$XMLTree[1]->[$child+1]->[$index] eq "0") {
+                                $str .= $$XMLTree[1]->[$child+1]->[$index+1];
+                                $next = 1;
+                            }
+                        }
+                        return $str;
+                    }
+                    return $$XMLTree[1]->[$child+1]->[0]->{$attrib}
+                        if (exists $$XMLTree[1]->[$child+1]->[0]->{$attrib});
+                }
+                #---------------------------------------------------------------------
+                # Return an array of values that represent the raw CDATA without
+                # mark up tags for the requested tags.
+                #---------------------------------------------------------------------
+                if ($type eq "value array")
+                {
+                    if ($attrib eq "")
+                    {
+                        my $str = "";
+                        my $next = 0;
+                        my $index;
+                        foreach $index (1..$#{$$XMLTree[1]->[$child+1]})
+                        {
+                            if ($next == 1) { $next = 0;  next; }
+                            if ($$XMLTree[1]->[$child+1]->[$index] eq "0")
+                            {
+                                $str .= $$XMLTree[1]->[$child+1]->[$index+1];
+                                $next = 1;
+                            }
+                        }
+                        push(@array,$str);
+                    }
+                    else
+                    {
+                        push(@array,$$XMLTree[1]->[$child+1]->[0]->{$attrib})
+                            if (exists $$XMLTree[1]->[$child+1]->[0]->{$attrib});
+                    }
+                }
+                #---------------------------------------------------------------------
+                # Return a pointer to a new XML::Parser::Tree object that has the
+                # requested tag as the root tag.
+                #---------------------------------------------------------------------
+                if ($type eq "tree")
+                {
+                    my @tree = ( $$XMLTree[1]->[$child] , $$XMLTree[1]->[$child+1] );
+                    return @tree;
+                }
+                #---------------------------------------------------------------------
+                # Return an array of pointers to XML::Parser::Tree objects that have
+                # the requested tag as the root tags.
+                #---------------------------------------------------------------------
+                if ($type eq "tree array")
+                {
+                    my @tree = ( $$XMLTree[1]->[$child] , $$XMLTree[1]->[$child+1] );
+                    push(@array,\@tree);
+                }
+                #---------------------------------------------------------------------
+                # Return a count of the number of tags that match
+                #---------------------------------------------------------------------
+                if ($type eq "count")
+                {
+                    if ($$XMLTree[1]->[$child] eq "0")
+                    {
+                        $skipthis = 1;
+                        next;
+                    }
+                    if ($skipthis == 1)
+                    {
+                        $skipthis = 0;
+                        next;
+                    }
+                    $count++;
+                }
+                #---------------------------------------------------------------------
+                # Return a count of the number of tags that match
+                #---------------------------------------------------------------------
+                if ($type eq "child array")
+                {
+                    my @tree = ( $$XMLTree[1]->[$child] , $$XMLTree[1]->[$child+1] );
+                    push(@array,\@tree) if ($tree[0] ne "0");
+                }
+                #---------------------------------------------------------------------
+                # Return the attribute hash that matches this tag
+                #---------------------------------------------------------------------
+                if ($type eq "attribs")
+                {
+                    return (%{$$XMLTree[1]->[$child+1]->[0]});
+                }
+            }
+        }
+        #-------------------------------------------------------------------------
+        # If we are returning arrays then return array.
+        #-------------------------------------------------------------------------
+        if (($type eq "tree array") || ($type eq "value array") ||
+            ($type eq "child array"))
+        {
+            return @array;
+        }
+
+        #-------------------------------------------------------------------------
+        # If we are returning then count, then do so
+        #-------------------------------------------------------------------------
+        if ($type eq "count")
+        {
+            return $count;
+        }
+    }
+    else
+    {
+        #-------------------------------------------------------------------------
+        # This is the root tag, so handle things a level up.
+        #-------------------------------------------------------------------------
+
+        #-------------------------------------------------------------------------
+        # Return the raw CDATA value without mark ups, or the value of the
         # requested attribute.
-        #---------------------------------------------------------------------
-	if ($type eq "value") {
-	  if ($attrib eq "") {
-	    my $str = "";
-	    my $next = 0;
-	    my $index;
-	    foreach $index (1..$#{$$XMLTree[1]->[$child+1]}) {
-	      if ($next == 1) { $next = 0; next; }
-	      if ($$XMLTree[1]->[$child+1]->[$index] eq "0") {
-		$str .= $$XMLTree[1]->[$child+1]->[$index+1];
-		$next = 1;
-	      }
-	    }
-	    return $str;
-	  }
-	  return $$XMLTree[1]->[$child+1]->[0]->{$attrib}
-	    if (exists $$XMLTree[1]->[$child+1]->[0]->{$attrib});
-	}
-        #---------------------------------------------------------------------
-	# Return an array of values that represent the raw CDATA without
-        # mark up tags for the requested tags.
-        #---------------------------------------------------------------------
-	if ($type eq "value array") {
-	  if ($attrib eq "") {
-	    my $str = "";
-	    my $next = 0;
-	    my $index;
-	    foreach $index (1..$#{$$XMLTree[1]->[$child+1]}) {
-	      if ($next == 1) { $next = 0; next; }
-	      if ($$XMLTree[1]->[$child+1]->[$index] eq "0") {
-		$str .= $$XMLTree[1]->[$child+1]->[$index+1];
-		$next = 1;
-	      }
-	    }
-	    push(@array,$str);
-	  } else {
-	    push(@array,$$XMLTree[1]->[$child+1]->[0]->{$attrib})
-	      if (exists $$XMLTree[1]->[$child+1]->[0]->{$attrib});
-	  }
-	}
-        #---------------------------------------------------------------------
-	# Return a pointer to a new XML::Parser::Tree object that has the
+        #-------------------------------------------------------------------------
+        if ($type eq "value")
+        {
+            if ($attrib eq "")
+            {
+                my $str = "";
+                my $next = 0;
+                my $index;
+                foreach $index (1..$#{$$XMLTree[1]})
+                {
+                    if ($next == 1) { $next = 0; next; }
+                    if ($$XMLTree[1]->[$index] eq "0")
+                    {
+                        $str .= $$XMLTree[1]->[$index+1];
+                        $next = 1;
+                    }
+                }
+                return $str;
+            }
+            return $$XMLTree[1]->[0]->{$attrib}
+                if (exists $$XMLTree[1]->[0]->{$attrib});
+        }
+        #-------------------------------------------------------------------------
+        # Return a pointer to a new XML::Parser::Tree object that has the
         # requested tag as the root tag.
-        #---------------------------------------------------------------------
-	if ($type eq "tree") {
-	  my @tree = ( $$XMLTree[1]->[$child] , $$XMLTree[1]->[$child+1] );
-	  return @tree;
-	}
-        #---------------------------------------------------------------------
-	# Return an array of pointers to XML::Parser::Tree objects that have
-        # the requested tag as the root tags.
-        #---------------------------------------------------------------------
-	if ($type eq "tree array") {
-	  my @tree = ( $$XMLTree[1]->[$child] , $$XMLTree[1]->[$child+1] );
-	  push(@array,\@tree);
-	}
-        #---------------------------------------------------------------------
-	# Return a count of the number of tags that match
-        #---------------------------------------------------------------------
-	if ($type eq "count") {
-	  if ($$XMLTree[1]->[$child] eq "0") {
-	    $skipthis = 1;
-	    next;
-	  }
-	  if ($skipthis == 1) {
-	    $skipthis = 0;
-	    next;
-	  }
-	  $count++;
-	}
-        #---------------------------------------------------------------------
-	# Return a count of the number of tags that match
-        #---------------------------------------------------------------------
-	if ($type eq "index array") {
-	  my @tree = ( $$XMLTree[1]->[$child] , $$XMLTree[1]->[$child+1] );
-	  push(@array,$$XMLTree[1]->[$child],$child);
-	}
-        #---------------------------------------------------------------------
-	# Return the attribute hash that matches this tag
-        #---------------------------------------------------------------------
-	if ($type eq "attribs") {
-	  return (%{$$XMLTree[1]->[$child+1]->[0]});
-	}
-      }
-    }
-    #-------------------------------------------------------------------------
-    # If we are returning arrays then return array.
-    #-------------------------------------------------------------------------
-    if (($type eq "tree array") || ($type eq "value array") ||
-        ($type eq "index array")) {
-      return @array;
-    }
+        #-------------------------------------------------------------------------
+        if ($type eq "tree")
+        {
+            my @tree =  @{$$XMLTree};
+            return @tree;
+        }
 
-    #-------------------------------------------------------------------------
-    # If we are returning then count, then do so
-    #-------------------------------------------------------------------------
-    if ($type eq "count") {
-      return $count;
-    }
-  } else {
-    #-------------------------------------------------------------------------
-    # This is the root tag, so handle things a level up.
-    #-------------------------------------------------------------------------
+        #-------------------------------------------------------------------------
+        # Return the 1 if the specified attribute exists in the root tag.
+        #-------------------------------------------------------------------------
+        if ($type eq "existence")
+        {
+            return 1 if (($attrib ne "") && (exists($$XMLTree[1]->[0]->{$attrib})));
+        }
 
-    #-------------------------------------------------------------------------
-    # Return the raw CDATA value without mark ups, or the value of the
-    # requested attribute.
-    #-------------------------------------------------------------------------
-    if ($type eq "value") {
-      if ($attrib eq "") {
-	my $str = "";
-	my $next = 0;
-	my $index;
-	foreach $index (1..$#{$$XMLTree[1]}) {
-	  if ($next == 1) { $next = 0; next; }
-	  if ($$XMLTree[1]->[$index] eq "0") {
-	    $str .= $$XMLTree[1]->[$index+1];
-	    $next = 1;
-	  }
-	}
-	return $str;
-      }
-      return $$XMLTree[1]->[0]->{$attrib}
-        if (exists $$XMLTree[1]->[0]->{$attrib});
+        #-------------------------------------------------------------------------
+        # Return the attribute hash that matches this tag
+        #-------------------------------------------------------------------------
+        if ($type eq "attribs")
+        {
+            return %{$$XMLTree[1]->[0]};
+        }
+        #-------------------------------------------------------------------------
+        # Return the tag of this node
+        #-------------------------------------------------------------------------
+        if ($type eq "tag")
+        {
+            return $$XMLTree[0];
+        }
     }
-    #-------------------------------------------------------------------------
-    # Return a pointer to a new XML::Parser::Tree object that has the
-    # requested tag as the root tag.
-    #-------------------------------------------------------------------------
-    if ($type eq "tree") {
-      my @tree =  @{$$XMLTree};
-      return @tree;
-    }
-
-    #-------------------------------------------------------------------------
-    # Return the 1 if the specified attribute exists in the root tag.
-    #-------------------------------------------------------------------------
-    if ($type eq "existence") {
-      return 1 if (($attrib ne "") && (exists($$XMLTree[1]->[0]->{$attrib})));
-    }
-
-    #-------------------------------------------------------------------------
-    # Return the attribute hash that matches this tag
-    #-------------------------------------------------------------------------
-    if ($type eq "attribs") {
-      return %{$$XMLTree[1]->[0]};
-    }
-    #-------------------------------------------------------------------------
-    # Return the tag of this node
-    #-------------------------------------------------------------------------
-    if ($type eq "tag") {
-      return $$XMLTree[0];
-    }
-  }
-  #---------------------------------------------------------------------------
-  # Return 0 if this was a request for existence, or "" if a request for
-  # a "value", or [] for "tree", "value array", and "tree array".
-  #---------------------------------------------------------------------------
-  return 0 if ($type eq "existence");
-  return "" if ($type eq "value");
-  return [];
+    #---------------------------------------------------------------------------
+    # Return 0 if this was a request for existence, or "" if a request for
+    # a "value", or [] for "tree", "value array", and "tree array".
+    #---------------------------------------------------------------------------
+    return 0 if ($type eq "existence");
+    return "" if ($type eq "value");
+    return [];
 }
 
 
@@ -500,43 +562,49 @@ sub GetXMLData {
 #                 that it represents.
 #
 ##############################################################################
-sub BuildXML {
-  my (@parseTree) = @_;
-  my ($str,$att,$child);
+sub BuildXML
+{
+    my ($parseTree,$rawXML) = @_;
 
-  return "" if $#parseTree eq -1;
+    return "" if $#{$parseTree} == -1;
 
-  if (ref($parseTree[0]) eq "") {
+    my $str = "";
+    if (ref($parseTree->[0]) eq "") 
+    {
+        if ($parseTree->[0] eq "0")
+        {
+            return &XML::Stream::EscapeXML($parseTree->[1]);
+        }
 
-    if ($parseTree[0] eq "0") {
-      return &XML::Stream::EscapeXML($parseTree[1]);
+        $str = "<".$parseTree->[0];
+        foreach my $att (sort {$a cmp $b} keys(%{$parseTree->[1]->[0]}))
+        {
+            $str .= " ".$att."='".&XML::Stream::EscapeXML($parseTree->[1]->[0]->{$att})."'";
+        }
+
+        if (($#{$parseTree->[1]} > 0) || (defined($rawXML) && ($rawXML ne "")))
+        {
+            $str .= ">";
+            
+            my $index = 1;
+            while($index <= $#{$parseTree->[1]})
+            {
+                my @newTree = ( $parseTree->[1]->[$index], $parseTree->[1]->[$index+1] );
+                $str .= &XML::Stream::Tree::BuildXML(\@newTree);
+                $index += 2;
+            }
+            
+            $str .= $rawXML if defined($rawXML);
+            $str .= "</".$parseTree->[0].">";
+        }
+        else
+        {
+            $str .= "/>";
+        }
+
     }
 
-    $str = "<".$parseTree[0];
-    foreach $att (keys(%{$parseTree[1]->[0]})) {
-      $str .= " ".$att."='".&XML::Stream::EscapeXML($parseTree[1]->[0]->{$att})."'";
-    }
-
-    my $tempStr = &XML::Stream::Tree::BuildXML(@{$parseTree[1]});
-
-    if (!defined($tempStr) || ($tempStr eq "")) {
-      $str .= "/>";
-    } else {
-      $str .= ">";
-      $str .= $tempStr;
-      $str .= "</".$parseTree[0].">";
-    }
-
-  } else {
-    shift(@parseTree);
-    while("@parseTree" ne "") {
-      $str .= &XML::Stream::Tree::BuildXML(@parseTree);
-      shift(@parseTree);
-      shift(@parseTree);
-    }
-  }
-
-  return $str;
+    return $str;
 }
 
 
@@ -562,22 +630,30 @@ sub BuildXML {
 #              Good for config files.
 #
 ##############################################################################
-sub XML2Config {
-  my ($XMLTree) = @_;
+sub XML2Config
+{
+    my ($XMLTree) = @_;
 
-  my %hash;
-  foreach my $tree (&XML::Stream::GetXMLData("tree array",$XMLTree,"*")) {
-    if ($tree->[0] eq "0") {
-      return $tree->[1] unless ($tree->[1] =~ /^\s*$/);
-    } else {
-      if (&XML::Stream::GetXMLData("count",$XMLTree,$tree->[0]) > 1) {
-	push(@{$hash{$tree->[0]}},&XML::Stream::XML2Config($tree));
-      } else {
-	$hash{$tree->[0]} = &XML::Stream::XML2Config($tree);
-      }
+    my %hash;
+    foreach my $tree (&XML::Stream::GetXMLData("tree array",$XMLTree,"*"))
+    {
+        if ($tree->[0] eq "0")
+        {
+            return $tree->[1] unless ($tree->[1] =~ /^\s*$/);
+        }
+        else
+        {
+            if (&XML::Stream::GetXMLData("count",$XMLTree,$tree->[0]) > 1)
+            {
+                push(@{$hash{$tree->[0]}},&XML::Stream::XML2Config($tree));
+            }
+            else
+            {
+                $hash{$tree->[0]} = &XML::Stream::XML2Config($tree);
+            }
+        }
     }
-  }
-  return \%hash;
+    return \%hash;
 }
 
 

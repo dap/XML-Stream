@@ -147,7 +147,7 @@ use IO::Select;
 use XML::Parser;
 use vars qw($VERSION $STREAMERROR);
 
-$VERSION = "1.04";
+$VERSION = "1.05";
 $STREAMERROR = "";
 
 use XML::Stream::Namespace;
@@ -201,8 +201,7 @@ sub new {
   my $hostname = hostname();
   my $address = gethostbyname($hostname) || 
     die("Cannot resolve $hostname: $!");
-  my $fullname = gethostbyaddr($address,AF_INET) || 
-    die("Cannot re-resolve $hostname: $!");
+  my $fullname = gethostbyaddr($address,AF_INET) || $hostname;
 
   $self->debug(1,"new: hostname = ($fullname)");
 
@@ -488,11 +487,13 @@ sub ParseStream {
   $self->{PARSING} = 1;
 
   my $goodXML = "";
-  my $badXML;
+  my $badXML = "";
 
   while($badXML ne $self->{XML}) {  
     ($goodXML,$badXML) = ($self->{XML} =~ /^([\w\W]+)(\<[^\>]+)$/);
     
+    $goodXML = $badXML = "" if (!defined($goodXML) && !defined($badXML));
+
     $self->debug(2,"ParseStream: goodXML($goodXML) badXML($badXML)");
     
     if (($goodXML eq "") && ($badXML eq "")) {

@@ -1,3 +1,10 @@
+1.05
+====
+  - Fixed sport where Stream would die if it could not resolve your full
+    hostname.  Now it just reverts back to the result of hostname() if
+    it can' look up the full name.
+  - Initialized some variables to get rid of warnings with perl -w.
+
 1.04
 ====
   - Changed version scheme to allow Perl to check for it.

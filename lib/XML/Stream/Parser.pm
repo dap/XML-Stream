@@ -51,8 +51,10 @@ it under the same terms as Perl itself.
 
 =cut
 
-#use 5.008_000;
 use strict;
+use vars qw( $VERSION );
+
+$VERSION = "1.20";
 
 BEGIN {
     if( $] >= 5.008 )

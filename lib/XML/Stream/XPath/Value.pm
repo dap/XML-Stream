@@ -24,6 +24,9 @@ package XML::Stream::XPath::Value;
 
 use 5.006_001;
 use strict;
+use vars qw( $VERSION );
+
+$VERSION = "1.20";
 
 sub new
 {

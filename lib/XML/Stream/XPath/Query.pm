@@ -25,6 +25,9 @@ package XML::Stream::XPath::Query;
 use 5.006_001;
 use strict;
 use Carp;
+use vars qw( $VERSION );
+
+$VERSION = "1.20";
 
 sub new
 {

@@ -94,6 +94,9 @@ it under the same terms as Perl itself.
 
 use strict;
 use Carp;
+use vars qw( $VERSION );
+
+$VERSION = "1.20";
 
 sub new
 {

@@ -136,9 +136,9 @@ it under the same terms as Perl itself.
 
 =cut
 
-use vars qw( $LOADED );
+use vars qw( $VERSION );
 
-$LOADED = 1;
+$VERSION = "1.20";
 
 sub new
 {

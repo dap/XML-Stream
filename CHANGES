@@ -1,3 +1,7 @@
+1.20
+====
+  - Ok... dang it.  Another minor tweak to fix CPAN.
+
 1.19
 ====
   - Minor release bug.  Forgot to include the prereqs for Authen::SASL

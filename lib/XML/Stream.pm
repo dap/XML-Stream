@@ -295,7 +295,7 @@ else
 }
 
 
-$VERSION = "1.19";
+$VERSION = "1.20";
 $NONBLOCKING = 0;
 
 use XML::Stream::Namespace;

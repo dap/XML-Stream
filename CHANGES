@@ -1,3 +1,22 @@
+1.07
+====
+  - Added code to handle not only connecting over TCP/IP but over
+    STDIN/STDOUT (for the new Jabber server).
+  - Added code to handle keeping the connection alive over connections
+    that drop the connection after a period of inactivity.
+
+1.06
+====
+  - Fixed bug where Process(0) would still sleep for a short time and
+    cause those fast loops to take longer than they should.
+  - Added Unicode support.  When you build the tree, make sure that
+    it's latin 1 you are speaking.  It's then up to the sender to ensure
+    that the outgoing data is utf8.
+  - Added timestamp support to debug.
+  - STREAMERROR is now local to an object instantiaion instead of the 
+    namespace.  This helps when you get an error and then grab a new
+    object and want to connect again.
+
 1.05
 ====
   - Fixed sport where Stream would die if it could not resolve your full

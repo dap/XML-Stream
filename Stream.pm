@@ -30,22 +30,31 @@ XML::Stream - Creates and XML Stream connection and parses return data
 =head1 METHODS
 
   new(debug=>string,       - creates the XML::Stream object.  debug should
-      debugfh=>FileHandle)   be set to the path for the debug log to be
-                             written.  If set to "stdout" then the debug
-                             will go there.   Also, you can specify a 
-                             filehandle that already exists and use that.
+      debugfh=>FileHandle,   be set to the path for the debug log to be
+      debuglevel=>0|1|2,     written.  If set to "stdout" then the debug
+      debugtime=>0|1)        will go there.   Also, you can specify a 
+                             filehandle that already exists byt using
+                             debugfh.  debuglevel determines the amount of
+                             debug to generate.  0 is the least, 2 is the
+                             most.  debugtime determines wether a timestamp
+                             should be preappended to the entry.
 
-  Connect(hostname=>string,  - opens a tcp connection to the specified
-          port=>integer,       server and sends the proper opening XML
-          myhostname=>string,  Stream tag.  hostname, port, and namespace
-          namespace=>array,    are required.  namespaces allows you
-          namespaces=>array)   to use XML::Stream::Namespace objects.
-                               myhostname should not be needed but if 
-                               the module cannot determine your hostname 
-                               properly (check the debug log), set this 
-                               to the correct value, or if you want
-                               the other side of the stream to think that
-                               you are someone else.
+  Connect(hostname=>string,       - opens a tcp connection to the 
+          port=>integer,            specified server and sends the proper 
+          myhostname=>string,       opening XML Stream tag.  hostname, 
+          namespace=>array,         port, and namespace are required.  
+          namespaces=>array,        namespaces allows you to use 
+          connectiontype=>string)   XML::Stream::Namespace objects. 
+                                    myhostname should not be needed but 
+                                    if the module cannot determine your 
+                                    hostname properly (check the debug 
+                                    log), set this to the correct value, 
+                                    or if you want the other side of the 
+                                    stream to think that you are someone
+                                    else.  The type determines the kind
+                                    of connection that is made:
+                                      "tcpip"    - TCP/IP (default)
+                                      "stdinout" - STDIN/STDOUT
 
   Disconnect() - sends the proper closing XML tag and closes the socket
                  down.
@@ -145,10 +154,16 @@ use Sys::Hostname;
 use IO::Socket;
 use IO::Select;
 use XML::Parser;
-use vars qw($VERSION $STREAMERROR);
+use vars qw($VERSION $UNICODE);
 
-$VERSION = "1.05";
-$STREAMERROR = "";
+if ($] >= 5.006) {
+  $UNICODE = 1;
+} else {
+  require Unicode::String;
+  $UNICODE = 0;
+}
+
+$VERSION = "1.07";
 
 use XML::Stream::Namespace;
 ($XML::Stream::Namespace::VERSION < $VERSION) &&
@@ -161,6 +176,11 @@ sub new {
 
   my %args;
   while($#_ >= 0) { $args{ lc pop(@_) } = pop(@_); }
+
+  $self->{KEEPALIVE} = time;
+
+  $self->{DEBUGTIME} = 0;
+  $self->{DEBUGTIME} = $args{debugtime} if exists($args{debugtime});
 
   $self->{DEBUGLEVEL} = 1;
   $self->{DEBUGLEVEL} = $args{debuglevel} if exists($args{debuglevel});
@@ -210,7 +230,8 @@ sub new {
   #---------------------------------------------------------------------------
   $self->{SERVER} = {hostname => "",
 		     port => "", 
-		     sock => 0, 
+		     sock => 0,
+		     ssl=>(exists($args{ssl}) ? $args{ssl} : 0),
 		     namespace => "",
 		     myhostname => $fullname,
 		     derivedhostname => $fullname,
@@ -244,6 +265,11 @@ sub new {
   $self->{XML} = "";
 
   #---------------------------------------------------------------------------
+  # If there is an error on the stream, then we need a place to indicate that.
+  #---------------------------------------------------------------------------
+  $self->{STREAMERROR} = "";
+
+  #---------------------------------------------------------------------------
   # Flag to determine if we are alrady parsing and need to store the incoming
   # XML until later.
   #---------------------------------------------------------------------------
@@ -263,6 +289,10 @@ sub debug {
   my ($limit,@args) = @_;
   return if ($limit > $self->{DEBUGLEVEL});
   my $fh = $self->{DEBUGFILE};
+  if ($self->{DEBUGTIME} == 1) {
+    my ($sec,$min,$hour) = localtime(time);
+    print $fh sprintf("[%02d:%02d:%02d] ",$hour,$min,$sec);
+  }
   print $fh "XML::Stream: @args\n";
 }
 
@@ -280,36 +310,61 @@ sub Connect {
   my $timeout = exists $_{timeout} ? delete $_{timeout} : "";
   while($#_ >= 0) { $self->{SERVER}{ lc pop(@_) } = pop(@_); }
 
-  #---------------------------------------------------------------------------
-  # Check some things that we have to know in order get the connection up
-  # and running.  Server hostname, port number, namespace, etc...
-  #---------------------------------------------------------------------------
-  if ($self->{SERVER}{hostname} eq "") {
-    $self->SetErrorCode("Server hostname not specified");
-    return;
-  }
-  if ($self->{SERVER}{port} eq "") {
-    $self->SetErrorCode("Server port not specified");
-    return;
-  }
+  $self->{SERVER}{connectiontype} = "tcpip" 
+    unless exists($self->{SERVER}{connectiontype});
+
+  $self->debug(1,"Connect: type($self->{SERVER}{connectiontype})");
+
   if ($self->{SERVER}{namespace} eq "") {
     $self->SetErrorCode("Namespace not specified");
     return;
   }
-  if ($self->{SERVER}{myhostname} eq "") {
-    $self->{SERVER}{myhostname} = $self->{SERVER}{derivedhostname};
-  }
+
+  if ($self->{SERVER}{connectiontype} eq "tcpip") {
+
+    #-------------------------------------------------------------------------
+    # Check some things that we have to know in order get the connection up
+    # and running.  Server hostname, port number, namespace, etc...
+    #-------------------------------------------------------------------------
+    if ($self->{SERVER}{hostname} eq "") {
+      $self->SetErrorCode("Server hostname not specified");
+      return;
+    }
+    if ($self->{SERVER}{port} eq "") {
+      $self->SetErrorCode("Server port not specified");
+      return;
+    }
+    if ($self->{SERVER}{myhostname} eq "") {
+      $self->{SERVER}{myhostname} = $self->{SERVER}{derivedhostname};
+    }
   
-  #---------------------------------------------------------------------------
-  # Open the connection to the listed server and port.  If that fails then
-  # abort ourselves and let the user check $! on his own.
-  #---------------------------------------------------------------------------
-  $self->{SERVER}{sock} = 
-    new IO::Socket::INET(PeerAddr => $self->{SERVER}{hostname}, 
-			 PeerPort => $self->{SERVER}{port}, 
-			 Proto => 'tcp');
-  return unless $self->{SERVER}{sock};
-  $self->{SERVER}{sock}->autoflush(1);
+    #-------------------------------------------------------------------------
+    # Open the connection to the listed server and port.  If that fails then
+    # abort ourselves and let the user check $! on his own.
+    #-------------------------------------------------------------------------
+    if ($self->{SERVER}{ssl} == 0) {
+      $self->{SERVER}{sock} = 
+	new IO::Socket::INET(PeerAddr => $self->{SERVER}{hostname}, 
+			     PeerPort => $self->{SERVER}{port}, 
+			     Proto => 'tcp');
+    } else {
+#      print "Use SSL...\n";
+#      use IO::Socket::SSL;
+      $IO::Socket::SSL::DEBUG = 1;
+      &Net::Jabber::printData("\$self->{SERVER}",$self->{SERVER});
+      $self->{SERVER}{sock} = 
+	new IO::Socket::SSL(PeerAddr => $self->{SERVER}{hostname},
+			    PeerPort => $self->{SERVER}{port}, 
+			    Proto => 'tcp'
+			   );
+    }
+    return unless $self->{SERVER}{sock};
+    $self->{SERVER}{sock}->autoflush(1);
+  }
+  if ($self->{SERVER}{connectiontype} eq "stdinout") {
+    $self->{STDOUT} = new FileHandle(">&STDOUT");
+    $self->{STDOUT}->autoflush(1);
+  }	
   
   #---------------------------------------------------------------------------
   # Next, we build the opening handshake.
@@ -317,15 +372,17 @@ sub Connect {
   my $stream = '<?xml version="1.0"?>';
   $stream .= '<stream:stream ';
   $stream .= 'xmlns:stream="http://etherx.jabber.org/streams" ';
-  $stream .= 'to="'.$self->{SERVER}{hostname}.'" ';
-  $stream .= 'from="'.$self->{SERVER}{myhostname}.'" ' if ($self->{SERVER}{myhostname} ne "");
   $stream .= 'xmlns="'.$self->{SERVER}{namespace}.'" ';
-  $stream .= 'id="'.$self->{SERVER}{id}.'"' if (exists($self->{SERVER}{id}) && ($self->{SERVER}{id} ne ""));
-  my $namespaces = "";
-  my $ns;
-  foreach $ns (@{$self->{SERVER}{namespaces}}) {
-    $namespaces .= " ".$ns->GetStream();
-    $stream .= " ".$ns->GetStream();
+  if ($self->{SERVER}{connectiontype} eq "tcpip") {
+    $stream .= 'to="'.$self->{SERVER}{hostname}.'" ';
+    $stream .= 'from="'.$self->{SERVER}{myhostname}.'" ' if ($self->{SERVER}{myhostname} ne "");
+    $stream .= 'id="'.$self->{SERVER}{id}.'"' if (exists($self->{SERVER}{id}) && ($self->{SERVER}{id} ne ""));
+    my $namespaces = "";
+    my $ns;
+    foreach $ns (@{$self->{SERVER}{namespaces}}) {
+      $namespaces .= " ".$ns->GetStream();
+      $stream .= " ".$ns->GetStream();
+    }
   }
   $stream .= ">";
 
@@ -337,13 +394,14 @@ sub Connect {
   #---------------------------------------------------------------------------
   # Create the XML::Parser and register our callbacks
   #---------------------------------------------------------------------------
-  my $expat = 
-    new XML::Parser(Handlers => { Start => sub { $self->_handle_root(@_) }, 
-				  End   => sub { $self->_handle_close(@_) }, 
-				  Char  => sub { $self->_handle_cdata(@_) }
-				});
+  my $expat =
+    new XML::Parser(Handlers => { Start => sub { $self->_handle_root(@_) } });
   $self->{SERVER}{parser} = $expat->parse_start();
-  $self->{SERVER}{select} = new IO::Select($self->{SERVER}{sock});
+  
+  $self->{SERVER}{select} = new IO::Select($self->{SERVER}{sock})
+    if ($self->{SERVER}{connectiontype} eq "tcpip");
+  $self->{SERVER}{select} = new IO::Select(*STDIN)
+    if ($self->{SERVER}{connectiontype} eq "stdinout");
 
   #---------------------------------------------------------------------------
   # Before going on let's make sure that the server responded with a valid
@@ -353,8 +411,9 @@ sub Connect {
   my $timeStart = time();
   while($self->{STATUS} == 0) {
     if ($self->{SERVER}{select}->can_read(0)) {
-      $buff = $self->Read();
-      return unless ($self->ParseStream($buff) == 1);
+      $self->{STATUS} = -1 if (!defined($buff = $self->Read()));
+      return unless($self->{STATUS} == 0);
+      return unless($self->ParseStream($buff) == 1);
     } else {
       if ($timeout ne "") {
 	$timeout -= (time() - $timeStart);
@@ -364,7 +423,7 @@ sub Connect {
 	}
       }
     }
-    
+
     return if($self->{SERVER}{select}->has_error(0));
   }
   return if($self->{STATUS} != 1);
@@ -381,7 +440,7 @@ sub Disconnect {
   my $self = shift;
 
   $self->Send("</stream:stream>");
-  close($self->{SERVER}{sock});
+  close($self->{SERVER}{sock}) if ($self->{SERVER}{connectiontype} eq "tcpip");
 }
 
 
@@ -439,10 +498,13 @@ sub Process {
       $timeout -= ($time - $timeStart);
       $timeStart = $time;
       $block = 0 if ($timeout <= 0);
+      select(undef,undef,undef,.25) unless ($timeout <= 0);
+    } else {
+      select(undef,undef,undef,.25);
     }
-    select(undef,undef,undef,.25);
     
     $block = 1 if $self->{SERVER}{select}->can_read(0);
+    $self->Send(" ") if ((time - $self->{KEEPALIVE}) > 60);
   }
 
   #---------------------------------------------------------------------------
@@ -507,9 +569,9 @@ sub ParseStream {
     
     $self->{SERVER}{parser}->parse_more($goodXML);
     
-    if ($STREAMERROR ne "") {
-      $self->debug(2,"ParseStream: ERROR($STREAMERROR)");
-      $self->SetErrorCode($STREAMERROR);
+    if ($self->{STREAMERROR} ne "") {
+      $self->debug(2,"ParseStream: ERROR($self->{STREAMERROR})");
+      $self->SetErrorCode($self->{STREAMERROR});
       return;
     }
     
@@ -574,7 +636,13 @@ sub GetSock {
 sub Send {
   my $self = shift;
   $self->debug(1,"Send: (@_)");
-  $self->{SERVER}{sock}->print(@_) || return;
+  if ($self->{SERVER}{connectiontype} eq "tcpip") {
+    $self->{SERVER}{sock}->print(@_) || return;
+  }
+  if ($self->{SERVER}{connectiontype} eq "stdinout") {
+    $self->{STDOUT}->print("@_\n");
+  }
+  $self->{KEEPALIVE} = time;
   return 1;
 }
 
@@ -587,9 +655,14 @@ sub Send {
 sub Read {
   my $self = shift;
   my $buff;
-  my $status = $self->{SERVER}{sock}->sysread($buff,1024);
+  my $status = 1;
+  $status = $self->{SERVER}{sock}->sysread($buff,1024) 
+    if ($self->{SERVER}{connectiontype} eq "tcpip");
+  $status = sysread(STDIN,$buff,1024)
+    if ($self->{SERVER}{connectiontype} eq "stdinout");
   $self->debug(1,"Read: ($buff)");
-  return $buff unless $status == 0;
+  $self->{KEEPALIVE} = time unless (($buff eq "") || ($status == 0));
+  return $buff unless ($status == 0);
   $self->debug(1,"Read: ERROR");
   return;
 }
@@ -653,7 +726,10 @@ sub _handle_root {
   # Now that we have gotten a root tag, let's look for the tags that make up
   # the stream.  Change the handler for a Start tag to another function.
   #---------------------------------------------------------------------------
-  $expat->setHandlers(Start => sub { $self->_handle_element(@_)});
+  $expat->setHandlers(Start => sub { $self->_handle_element(@_)} ,
+		      End   => sub { $self->_handle_close(@_) }, 
+		      Char  => sub { $self->_handle_cdata(@_) } 
+		     );
 }
 
 
@@ -685,12 +761,23 @@ sub _handle_element {
 ##############################################################################
 #
 # _handle_cdata - handles the CDATA that is encountered.  Also, in the spirit
-#                 of XML::Parser::Tree it any sequential CDATA into one tag.
+#                 of XML::Parser::Tree it combines any sequential CDATA into 
+#                 one tag.
 #
 ##############################################################################
 sub _handle_cdata {
   my $self = shift;
   my ($expat, $cdata) = @_;
+
+  return if ($#{$self->{TREE}} == -1);
+
+  if ($UNICODE == 1) {
+    eval("{  no warnings;  \$cdata =~ tr/\0-\x{ff}//UC;  };")
+  } else {
+    my $unicode = new Unicode::String();
+    $unicode->utf8($cdata);
+    $cdata = $unicode->latin1;
+  }
 
   $self->debug(2,"_handle_cdata: expat($expat) cdata($cdata)");
   
@@ -729,7 +816,7 @@ sub _handle_close {
     push @{$self->{TREE}}, $CLOSED;
 
     if($self->{TREE}->[0] eq "stream:error") {
-      $STREAMERROR = $self->{TREE}[1]->[2];
+      $self->{STREAMERROR} = $self->{TREE}[1]->[2];
     } else {
       my @tree = @{$self->{TREE}};
       $self->{TREE} = [];
@@ -750,8 +837,9 @@ sub _handle_close {
 sub _node {
   my $self = shift;
   my @PassedNode = @_;
-  push @{$self->{NODES}}, ${@PassedNode};
-} 
+  &Net::Jabber::printData("\$PassedNode",\@PassedNode);
+  push(@{$self->{NODES}},\@PassedNode);
+}
 
 1;
 

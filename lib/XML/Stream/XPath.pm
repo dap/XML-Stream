@@ -16,7 +16,7 @@
 #  Boston, MA  02111-1307, USA.
 #
 #  Jabber
-#  Copyright (C) 1998-1999 The Jabber Team http://jabber.org/
+#  Copyright (C) 1998-2004 Jabber Software Foundation http://jabber.org/
 #
 ##############################################################################
 
@@ -24,22 +24,11 @@ package XML::Stream::XPath;
 
 use 5.006_001;
 use strict;
-use vars qw($VERSION %FUNCTIONS);
-
-$VERSION = "1.18";
+use vars qw( %FUNCTIONS );
 
 use XML::Stream::XPath::Value;
-($XML::Stream::XPath::Value::VERSION < $VERSION) &&
-  die("XML::Stream::XPath::Value $VERSION required--this is only version $XML::Stream::XPath::Value::VERSION");
-
 use XML::Stream::XPath::Op;
-($XML::Stream::XPath::Op::VERSION < $VERSION) &&
-  die("XML::Stream::XPath::Op $VERSION required--this is only version $XML::Stream::XPath::Op::VERSION");
-
 use XML::Stream::XPath::Query;
-($XML::Stream::XPath::Query::VERSION < $VERSION) &&
-  die("XML::Stream::XPath::Query $VERSION required--this is only version $XML::Stream::XPath::Query::VERSION");
-
 
 sub AddFunction
 {

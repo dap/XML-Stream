@@ -1,3 +1,8 @@
+1.19
+====
+  - Minor release bug.  Forgot to include the prereqs for Authen::SASL
+    and MIME::Base4.
+
 1.18
 ====
   - Added initial cut at XMPP 1.0 support.

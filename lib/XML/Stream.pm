@@ -16,7 +16,7 @@
 #  Boston, MA  02111-1307, USA.
 #
 #  Jabber
-#  Copyright (C) 1998-1999 The Jabber Team http://jabber.org/
+#  Copyright (C) 1998-2004 Jabber Software Foundation http://jabber.org/
 #
 ##############################################################################
 
@@ -295,21 +295,12 @@ else
 }
 
 
-$VERSION = "1.18";
+$VERSION = "1.19";
 $NONBLOCKING = 0;
 
 use XML::Stream::Namespace;
-($XML::Stream::Namespace::VERSION < $VERSION) &&
-  die("XML::Stream::Namespace $VERSION required--this is only version $XML::Stream::Namespace::VERSION");
-
 use XML::Stream::Parser;
-($XML::Stream::Parser::VERSION < $VERSION) &&
-  die("XML::Stream::Parser $VERSION required--this is only version $XML::Stream::Parser::VERSION");
-
 use XML::Stream::XPath;
-($XML::Stream::XPath::VERSION < $VERSION) &&
-  die("XML::Stream::XPath $VERSION required--this is only version $XML::Stream::XPath::VERSION");
-
 
 ##############################################################################
 #
@@ -327,8 +318,6 @@ sub import
     foreach my $module (@_)
     {
         eval "use XML::Stream::$module;";
-        die($@) if ($@);
-        eval "(\$XML::Stream::${module}::VERSION < \$VERSION) && die(\"XML::Stream::$module \$VERSION required--this is only version \$XML::Stream::${module}::VERSION\");";
         die($@) if ($@);
 
         my $lc = lc($module);
@@ -353,8 +342,8 @@ sub new
     $self->{DATASTYLE} = "tree";
     $self->{DATASTYLE} = delete($args{style}) if exists($args{style});
     
-    if ((($self->{DATASTYLE} eq "tree") && !defined($XML::Stream::Tree::VERSION)) ||
-        (($self->{DATASTYLE} eq "node") && !defined($XML::Stream::Node::VERSION))
+    if ((($self->{DATASTYLE} eq "tree") && !defined($XML::Stream::Tree::LOADED)) ||
+        (($self->{DATASTYLE} eq "node") && !defined($XML::Stream::Node::LOADED))
        )
     {
         croak("The style that you have chosen was not defined when you \"use\"d the module.\n");
@@ -1906,7 +1895,7 @@ sub TLSClientProceed
     my $node = shift;
 
     $self->debug(1,"TLSClientProceed: Convert normal socket to SSL");
-    $self->debug(1,"TLSClientProceed: sock($self->{SIDS}->{newconnection}->{sock})");
+    $self->debug(1,"TLSClientProceed: sock($self->{SIDS}->{$sid}->{sock})");
     if (!$self->LoadSSL())
     {
         $self->{SIDS}->{$sid}->{tls}->{error} = "Could not load IO::Socket::SSL.";

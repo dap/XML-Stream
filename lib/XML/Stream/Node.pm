@@ -16,7 +16,7 @@
 #  Boston, MA  02111-1307, USA.
 #
 #  Jabber
-#  Copyright (C) 1998-2002 The Jabber Team http://jabber.org/
+#  Copyright (C) 1998-2004 Jabber Software Foundation http://jabber.org/
 #
 ##############################################################################
 
@@ -136,9 +136,9 @@ it under the same terms as Perl itself.
 
 =cut
 
-use vars qw($VERSION);
+use vars qw( $LOADED );
 
-$VERSION = "1.18";
+$LOADED = 1;
 
 sub new
 {

@@ -16,7 +16,7 @@
 #  Boston, MA  02111-1307, USA.
 #
 #  Jabber
-#  Copyright (C) 1998-1999 The Jabber Team http://jabber.org/
+#  Copyright (C) 1998-2004 Jabber Software Foundation http://jabber.org/
 #
 ##############################################################################
 
@@ -25,9 +25,6 @@ package XML::Stream::XPath::Query;
 use 5.006_001;
 use strict;
 use Carp;
-use vars qw($VERSION);
-
-$VERSION = "1.18";
 
 sub new
 {

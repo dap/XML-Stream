@@ -16,7 +16,7 @@
 #  Boston, MA  02111-1307, USA.
 #
 #  Jabber
-#  Copyright (C) 1998-1999 The Jabber Team http://jabber.org/
+#  Copyright (C) 1998-2004 Jabber Software Foundation http://jabber.org/
 #
 ##############################################################################
 
@@ -53,7 +53,6 @@ it under the same terms as Perl itself.
 
 #use 5.008_000;
 use strict;
-use vars qw( $VERSION );
 
 BEGIN {
     if( $] >= 5.008 )
@@ -61,8 +60,6 @@ BEGIN {
         eval("use open ':utf8';");
     }
 }
-
-$VERSION = "1.18";
 
 sub new
 {

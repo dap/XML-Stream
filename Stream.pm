@@ -69,6 +69,10 @@ XML::Stream - Creates and XML Stream connection and parses return data
                  does no checking if valid XML was sent or not.  Best
                  behavior when sending information.
 
+  GetErrorCode() - returns a string that will hopefully contain some
+                   useful information about why Process or Connect
+                   returned an undef to you.
+
 =head1 EXAMPLES
 
   ##########################
@@ -78,12 +82,17 @@ XML::Stream - Creates and XML Stream connection and parses return data
 
   $stream = new XML::Stream;
 
-  $stream->Connect(hostname => "jabber.org", 
-                   port => 5222, 
-                   namespace => "jabber:client") || die $!;
+  my $status = $stream->Connect(hostname => "jabber.org", 
+                                port => 5222, 
+                                namespace => "jabber:client");
 
-  while($node = $stream->Process())
-  {
+  if (!defined($status)) {
+    print "ERROR: Could not connect to server\n";
+    print "       (",$stream->GetErrorCode(),")\n";
+    exit(0);
+  }
+
+  while($node = $stream->Process()) {
     # do something with $node
   }
 
@@ -104,12 +113,10 @@ XML::Stream - Creates and XML Stream connection and parses return data
 
   # Blocks here forever, noder is called for incoming 
   # packets when they arrive.
-  while(1) {
-    $stream->Process();
-  }
+  while(defined($stream->Process())) { }
 
-  $stream->Disconnect();
-
+  print "ERROR: Stream died (",$stream->GetErrorCode(),")\n";
+  
   sub noder
   {
     my $node = shift;
@@ -119,6 +126,7 @@ XML::Stream - Creates and XML Stream connection and parses return data
 =head1 AUTHOR
 
 Tweaked, tuned, and brightness changes by Ryan Eatmon, reatmon@ti.com
+in May of 2000.
 Colorized, and Dolby Surround sound added by Thomas Charron,
 tcharron@jabber.org
 By Jeremie in October of 1999 for http://etherx.jabber.org/streams/
@@ -137,9 +145,10 @@ use Sys::Hostname;
 use IO::Socket;
 use IO::Select;
 use XML::Parser;
-use vars qw($VERSION);
+use vars qw($VERSION $STREAMERROR);
 
 $VERSION = "1.0";
+$STREAMERROR = "";
 
 use XML::Stream::Namespace;
 ($XML::Stream::Namespace::VERSION < $VERSION) &&
@@ -202,7 +211,8 @@ sub new {
 		     sock => 0, 
 		     namespace => "",
 		     myhostname => $fullname,
-		     derivedhostname => $fullname };
+		     derivedhostname => $fullname,
+		     id => ""};
   
   #---------------------------------------------------------------------------
   # We are only going to use one callback, let the user call other callbacks
@@ -258,17 +268,17 @@ sub Connect {
   # Check some things that we have to know in order get the connection up
   # and running.  Server hostname, port number, namespace, etc...
   #---------------------------------------------------------------------------
-  if ($self->{SERVER}{hostname} eq "") { 
-    $! = "Server hostname not specified";
-    return undef;
+  if ($self->{SERVER}{hostname} eq "") {
+    $self->SetErrorCode("Server hostname not specified");
+    return;
   }
   if ($self->{SERVER}{port} eq "") {
-    $! = "Server port not specified";
-    return undef;
+    $self->SetErrorCode("Server port not specified");
+    return;
   }
   if ($self->{SERVER}{namespace} eq "") {
-    $! = "Namespace not specified";
-    return undef;
+    $self->SetErrorCode("Namespace not specified");
+    return;
   }
   if ($self->{SERVER}{myhostname} eq "") {
     $self->{SERVER}{myhostname} = $self->{SERVER}{derivedhostname};
@@ -282,7 +292,7 @@ sub Connect {
     new IO::Socket::INET(PeerAddr => $self->{SERVER}{hostname}, 
 			 PeerPort => $self->{SERVER}{port}, 
 			 Proto => 'tcp');
-  return undef unless $self->{SERVER}{sock};
+  return unless $self->{SERVER}{sock};
   $self->{SERVER}{sock}->autoflush(1);
   
   #---------------------------------------------------------------------------
@@ -294,7 +304,7 @@ sub Connect {
   $stream .= 'to="'.$self->{SERVER}{hostname}.'" ';
   $stream .= 'from="'.$self->{SERVER}{myhostname}.'" ' if ($self->{SERVER}{myhostname} ne "");
   $stream .= 'xmlns="'.$self->{SERVER}{namespace}.'" ';
-  $stream .= 'id="'.$self->{SERVER}{id}.'"' if ($self->{SERVER}{id} ne "");
+  $stream .= 'id="'.$self->{SERVER}{id}.'"' if (exists($self->{SERVER}{id}) && ($self->{SERVER}{id} ne ""));
   my $namespaces = "";
   my $ns;
   foreach $ns (@{$self->{SERVER}{namespaces}}) {
@@ -306,7 +316,7 @@ sub Connect {
   #---------------------------------------------------------------------------
   # Then we send the opening handshake.
   #---------------------------------------------------------------------------
-  $self->Send($stream) || return undef;
+  $self->Send($stream) || return;
 
   #---------------------------------------------------------------------------
   # Create the XML::Parser and register our callbacks
@@ -327,22 +337,27 @@ sub Connect {
   my $timeStart = time();
   while($self->{STATUS} == 0) {
     if ($self->{SERVER}{select}->can_read(0)) {
-#      $self->{SERVER}{sock}->sysread($buff,1024);
       $buff = $self->Read();
       $self->{SERVER}{parser}->parse_more($buff);
+      if ($STREAMERROR ne "") {
+	$self->SetErrorCode($STREAMERROR);
+	return;
+      }	
+
       # ToDo: we need to try/catch expat parsing errors here, no?
     } else {
       if ($timeout ne "") {
 	$timeout -= (time() - $timeStart);
-	return undef if($timeout <= 0);
+	if ($timeout <= 0) {
+	  $self->SetErrorCode("Timeout limit reached");
+	  return;
+	}
       }
     }
     
-    return undef if($self->{SERVER}{select}->has_error(0));
+    return if($self->{SERVER}{select}->has_error(0));
   }
-  if($self->{STATUS} != 1) {
-    return undef;
-  }
+  return if($self->{STATUS} != 1);
   return $self->GetRoot();
 }
 
@@ -376,22 +391,22 @@ sub Process {
   $timeout = "" if !defined($timeout);
 
   my($buff);
-
   
   #---------------------------------------------------------------------------
   # We need to keep track of what's going on in the function and tell the
-  # outside world about it:
-  #     0    connection open but no data.
+  # outside world about it so let's return something useful:
+  #     0    connection open but no data received.
   #     1    connection open and data received.
-  #   undef  connection closed
-  #   array  data that has been collected over time
+  #   undef  connection closed and error
+  #   array  connection open and the data that has been collected 
+  #          over time (No CallBack specified)
   #---------------------------------------------------------------------------
   my ($status) = 0;
   
   #---------------------------------------------------------------------------
   # Make sure the connection is active.
   #---------------------------------------------------------------------------
-  return undef unless ($self->{STATUS} == 1);
+  return unless ($self->{STATUS} == 1);
   
   #---------------------------------------------------------------------------
   # Either block until there is data and we have parsed it all, or wait a 
@@ -404,15 +419,20 @@ sub Process {
       while($self->{SERVER}{select}->can_read(0)) {
 	$status = 1;
 	$self->{STATUS} = -1 if (!defined($buff = $self->Read()));
-#	$self->{STATUS} = -1 if ($self->{SERVER}{sock}->sysread($buff,1024) == 0);
 	$self->{SERVER}{parser}->parse_more($buff);
-	return undef unless($self->{STATUS} == 1);
+	if ($STREAMERROR ne "") {
+	  $self->SetErrorCode($STREAMERROR);
+	  return;
+	}
+	return unless($self->{STATUS} == 1);
       }
       $block = 0;
     }
 
     if ($timeout ne "") {
-      $timeout -= (time() - $timeStart);
+      my $time = time;
+      $timeout -= ($time - $timeStart);
+      $timeStart = $time;
       $block = 0 if ($timeout <= 0);
     }
     select(undef,undef,undef,.25);
@@ -421,7 +441,7 @@ sub Process {
   #---------------------------------------------------------------------------
   # If the Select has an error then shut this party down.
   #---------------------------------------------------------------------------
-  return undef if($self->{SERVER}{select}->has_error(0));
+  return if($self->{SERVER}{select}->has_error(0));
   
   #---------------------------------------------------------------------------
   # If there are XML::Parser::Tree objects that have not been collected return
@@ -483,7 +503,7 @@ sub GetSock {
 sub Send {
   my $self = shift;
   $self->debug("XML::Stream: Send: (@_)");
-  $self->{SERVER}{sock}->print(@_) || return undef;
+  $self->{SERVER}{sock}->print(@_) || return;
   return 1;
 }
 
@@ -500,7 +520,32 @@ sub Read {
   $self->debug("XML::Stream: Read: ($buff)");
   return $buff unless $status == 0;
   $self->debug("XML::Stream: Read: ERROR");
-  return undef;
+  return;
+}
+
+
+##############################################################################
+#
+# GetErrorCode - if you are returned an undef, you can call this function
+#                and hopefully learn more information about the problem.
+#
+##############################################################################
+sub GetErrorCode {
+  my $self = shift;
+  return (($self->{ERRORCODE} ne "") ? $self->{ERRORCODE} : $!);
+}
+
+
+##############################################################################
+#
+# SetErrorCode - sets the error code so that the caller can find out more
+#                information about the problem
+#
+##############################################################################
+sub SetErrorCode {
+  my $self = shift;
+  my ($errorcode) = @_;
+  $self->{ERRORCODE} = $errorcode;
 }
 
 
@@ -520,7 +565,7 @@ sub _handle_root {
   # Make sure we are receiving a valid stream on the same namespace.
   #---------------------------------------------------------------------------
   $self->{STATUS} = 
-    (($tag eq "stream:stream") && 
+    (($tag eq "stream:stream") && exists($att{'xmlns'}) &&
      ($att{'xmlns'} eq $self->{SERVER}{namespace})) ? 1 : -1;
 
   
@@ -550,6 +595,7 @@ sub _handle_root {
 sub _handle_element {
   my $self = shift;
   my ($expat, $tag, %att) = @_;
+
   my @NEW;
   if($#{$self->{TREE}} < 0) {
     push @{$self->{TREE}}, $tag;
@@ -595,8 +641,13 @@ sub _handle_close {
   
   if($#{$self->{TREE}} < 1) {
     push @{$self->{TREE}}, $CLOSED;
-    &{$self->{NODE}}(@{$self->{TREE}});
-    $self->{TREE} = [];
+
+    if($self->{TREE}->[0] eq "stream:error") {
+      $STREAMERROR = $self->{TREE}[1]->[2];
+    } else {
+      &{$self->{NODE}}(@{$self->{TREE}});
+      $self->{TREE} = [];
+    }
   } else {
     push @{$self->{TREE}[$#{$self->{TREE}}]}, $CLOSED;
   }

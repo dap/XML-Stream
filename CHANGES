@@ -1,5 +1,13 @@
-1.0
-===
+1.0b
+====
+  - Improved error handling by creating GetErrorCode and SetErrorCode.
+    These functions allow the caller to get some information about why
+    Process or Connect returned undef.
+  - Added error checking if a <stream:error> is sent.  This will call
+    SetErrorCode and return undef.
+
+1.0a
+====
   - Version bump.
   - Changed method of handling timeouts in the Connect and Process block.
     The timeout from the Connect is no longer remembered in the Process

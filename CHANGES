@@ -1,3 +1,14 @@
+1.17
+====
+  - Added patch to make the Process a little faster by putting the
+    sleeps into the can_read() calls so that you don't have to delay
+    even a few micro seconds when you get new XML.  (Evan Prodromou)
+  - Added SRV lookup support for Connect via Net::DNS.
+  - Changed the select calls when blocking to can_read calls so
+    that we can wake up when there is data, and not just after a
+    certain period of time.  Thanks to Evan Prodromou.
+  - Interesting bug with Broken Pipes.
+
 1.16
 ====
   - Upgraded the XPath engine to a more extensible and robust

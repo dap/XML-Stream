@@ -1,4 +1,4 @@
-XML::Stream v1.16
+XML::Stream v1.17
 
 This module provides you with access to XML Streams.  An XML Stream
 is just that.  A stream of XML over a connection between two computers.
@@ -24,6 +24,7 @@ REQUIREMENTS
 RECOMMENDATIONS
 
   IO::Socket::SSL v0.81 - Module to enable SSL for XML::Stream.
+  Net::DNS - Enables access to SRV records.
 
 STATUS
 
@@ -32,4 +33,4 @@ implemented).  Also the Hash data type has been removed, please move to
 Node.
 
 Please send any bug reports to reatmon@jabber.org.
-2002/11/04
+2003/06/30

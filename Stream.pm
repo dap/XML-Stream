@@ -90,8 +90,8 @@ XML::Stream - Creates and XML Stream connection and parses return data
           namespace=>string,        XML::Stream::Namespace objects.
           namespaced=>array,        to is needed if you want the stream
           connectiontype=>string,   to attribute to be something other
-          ssl=>0|1)                 than the hostname you are connecting
-                                    to.  from is needed if you want the
+          ssl=>0|1,                 than the hostname you are connecting
+          srv=>string)              to.  from is needed if you want the
                                     stream from attribute to be something
                                     other than the hostname you are
                                     connecting from.  myhostname should
@@ -115,6 +115,15 @@ XML::Stream - Creates and XML Stream connection and parses return data
                                     below. Make sure you get the SID
                                     (Session ID) since you have to use it
                                     to call most other functions in here.
+
+                                    If srv is specified AND Net::DNS is
+                                    installed and can be loaded, then
+                                    an SRV query is sent to srv.hostname
+                                    and the results processed to replace
+                                    the hostname and port.  If the lookup
+                                    fails, or Net::DNS cannot be loaded,
+                                    then hostname and port are left alone
+                                    as the defaults.
 
 
   OpenFile(string) - opens a filehandle to the argument specified, and
@@ -243,6 +252,10 @@ use FileHandle;
 use Carp;
 use POSIX;
 
+$SIG{PIPE} = "IGNORE";
+
+use vars qw($VERSION $PAC $SSL $NONBLOCKING %HANDLERS $NETDNS);
+
 BEGIN {
     if( $] >= 5.008 )
     {
@@ -250,9 +263,19 @@ BEGIN {
     }
 }
 
-use vars qw($VERSION $PAC $SSL $NONBLOCKING %HANDLERS);
+if (eval "require Net::DNS;" )
+{
+    require Net::DNS;
+    import Net::DNS;
+    $NETDNS = 1;
+}
+else
+{
+    $NETDNS = 0;
+}
 
-$VERSION = "1.16";
+
+$VERSION = "1.17";
 $NONBLOCKING = 0;
 
 use XML::Stream::Namespace;
@@ -701,6 +724,33 @@ sub Connect
     }
     while($#_ >= 0) { $self->{SIDS}->{newconnection}->{ lc pop(@_) } = pop(@_); }
 
+    if (exists($self->{SIDS}->{newconnection}->{srv}))
+    {
+        $self->debug(1,"Connect: srv requested");
+        if ($NETDNS)
+        {
+            my $res = new Net::DNS::Resolver();
+            my $query = $res->query($self->{SIDS}->{newconnection}->{srv}.".".$self->{SIDS}->{newconnection}->{hostname},"SRV");
+            
+            if ($query)
+            { 
+                $self->{SIDS}->{newconnection}->{hostname} = ($query->answer)[0]->target();
+                $self->{SIDS}->{newconnection}->{port} = ($query->answer)[0]->port();
+                $self->debug(1,"Connect: srv host: $self->{SIDS}->{newconnection}->{hostname}");
+                $self->debug(1,"Connect: srv post: $self->{SIDS}->{newconnection}->{port}");
+            }
+            else
+            {
+                $self->debug(1,"Connect: srv query failed");
+            }
+        }
+        else
+        {
+            $self->debug(1,"Connect: srv query failed");
+        }
+        delete($self->{SIDS}->{newconnection}->{srv});
+    }
+
     $self->{SIDS}->{newconnection}->{connectiontype} = "tcpip"
         unless exists($self->{SIDS}->{newconnection}->{connectiontype});
 
@@ -719,10 +769,10 @@ sub Connect
     #---------------------------------------------------------------------------
     if ($self->{SIDS}->{newconnection}->{connectiontype} eq "tcpip")
     {
-        #-------------------------------------------------------------------------
+        #-----------------------------------------------------------------------
         # Check some things that we have to know in order get the connection up
         # and running.  Server hostname, port number, namespace, etc...
-        #-------------------------------------------------------------------------
+        #-----------------------------------------------------------------------
         if ($self->{SIDS}->{newconnection}->{hostname} eq "")
         {
             $self->SetErrorCode("newconnection","Server hostname not specified");
@@ -738,14 +788,14 @@ sub Connect
             $self->{SIDS}->{newconnection}->{myhostname} = $self->{SIDS}->{newconnection}->{derivedhostname};
         }
 
-        #-------------------------------------------------------------------------
+        #-----------------------------------------------------------------------
         # Open the connection to the listed server and port.  If that fails then
         # abort ourselves and let the user check $! on his own.
-        #-------------------------------------------------------------------------
+        #-----------------------------------------------------------------------
         $self->{SIDS}->{newconnection}->{sock} =
             new IO::Socket::INET(PeerAddr=>$self->{SIDS}->{newconnection}->{hostname},
-                 PeerPort=>$self->{SIDS}->{newconnection}->{port},
-                 Proto=>"tcp");
+                                 PeerPort=>$self->{SIDS}->{newconnection}->{port},
+                                 Proto=>"tcp");
         return unless $self->{SIDS}->{newconnection}->{sock};
 
         if ($self->{SIDS}->{newconnection}->{ssl} == 1)
@@ -776,10 +826,10 @@ sub Connect
     #---------------------------------------------------------------------------
     if ($self->{SIDS}->{newconnection}->{connectiontype} eq "http")
     {
-        #-------------------------------------------------------------------------
+        #-----------------------------------------------------------------------
         # Check some things that we have to know in order get the connection up
         # and running.  Server hostname, port number, namespace, etc...
-        #-------------------------------------------------------------------------
+        #-----------------------------------------------------------------------
         if ($self->{SIDS}->{newconnection}->{hostname} eq "")
         {
             $self->SetErrorCode("newconnection","Server hostname not specified");
@@ -852,17 +902,17 @@ sub Connect
                 exists($self->{SIDS}->{newconnection}->{httpsproxyport}) &&
                 defined($self->{SIDS}->{newconnection}->{httpsproxyport}));
 
-        #-------------------------------------------------------------------------
+        #-----------------------------------------------------------------------
         # Open the connection to the listed server and port.  If that fails then
         # abort ourselves and let the user check $! on his own.
-        #-------------------------------------------------------------------------
+        #-----------------------------------------------------------------------
         my $connect = "CONNECT $self->{SIDS}->{newconnection}->{hostname}:$self->{SIDS}->{newconnection}->{port} HTTP/1.1\r\nHost: $self->{SIDS}->{newconnection}->{hostname}\r\n\r\n";
         my $put = "PUT http://$self->{SIDS}->{newconnection}->{hostname}:$self->{SIDS}->{newconnection}->{port} HTTP/1.1\r\nHost: $self->{SIDS}->{newconnection}->{hostname}\r\nProxy-Connection: Keep-Alive\r\n\r\n";
 
         my $connected = 0;
-        #-------------------------------------------------------------------------
+        #-----------------------------------------------------------------------
         # Combo #0 - The user didn't specify a proxy
-        #-------------------------------------------------------------------------
+        #-----------------------------------------------------------------------
         if (!exists($self->{SIDS}->{newconnection}->{httpproxyhostname}) &&
             !exists($self->{SIDS}->{newconnection}->{httpsproxyhostname}))
         {
@@ -888,9 +938,9 @@ sub Connect
             #            $self->debug(1,"Connect: Combo #0: connected($connected)");
           }
 
-        #-------------------------------------------------------------------------
+        #-----------------------------------------------------------------------
         # Combo #1 - PUT through http_proxy
-        #-------------------------------------------------------------------------
+        #-----------------------------------------------------------------------
         if (!$connected &&
             exists($self->{SIDS}->{newconnection}->{httpproxyhostname}) &&
             ($self->{SIDS}->{newconnection}->{ssl} == 0))
@@ -915,9 +965,9 @@ sub Connect
             }
             $self->debug(1,"Connect: Combo #1: connected($connected)");
         }
-        #-------------------------------------------------------------------------
+        #-----------------------------------------------------------------------
         # Combo #2 - CONNECT through http_proxy
-        #-------------------------------------------------------------------------
+        #-----------------------------------------------------------------------
         if (!$connected &&
             exists($self->{SIDS}->{newconnection}->{httpproxyhostname}) &&
             ($self->{SIDS}->{newconnection}->{ssl} == 0))
@@ -942,9 +992,9 @@ sub Connect
             $self->debug(1,"Connect: Combo #2: connected($connected)");
         }
 
-        #-------------------------------------------------------------------------
+        #-----------------------------------------------------------------------
         # Combo #3 - CONNECT through https_proxy
-        #-------------------------------------------------------------------------
+        #-----------------------------------------------------------------------
         if (!$connected &&
             exists($self->{SIDS}->{newconnection}->{httpsproxyhostname}))
         {
@@ -967,9 +1017,9 @@ sub Connect
             $self->debug(1,"Connect: Combo #3: connected($connected)");
         }
 
-        #-------------------------------------------------------------------------
+        #-----------------------------------------------------------------------
         # We have failed
-        #-------------------------------------------------------------------------
+        #-----------------------------------------------------------------------
         if (!$connected)
         {
             $self->debug(1,"Connect: No connection... I have failed... I.. must... end it all...");
@@ -1071,7 +1121,7 @@ sub Connect
     # root tag and that the stream is open.
     #---------------------------------------------------------------------------
     my $buff = "";
-    my $timeStart = time();
+    my $timeEnd = ($timeout eq "") ? "" : time + $timeout;
     while($self->{SIDS}->{newconnection}->{status} == 0)
     {
         $self->debug(5,"Connect: can_read(",join(",",$self->{SIDS}->{newconnection}->{select}->can_read(0)),")");
@@ -1086,7 +1136,7 @@ sub Connect
         {
             if ($timeout ne "")
             {
-                if ($timeout <= (time() - $timeStart))
+                if (time >= $timeEnd)
                 {
                     $self->SetErrorCode("newconnection","Timeout limit reached");
                     return;
@@ -1189,7 +1239,6 @@ sub OpenFile
     $self->{SIDS}->{newconnection}->{status} = 0;
 
     my $buff = "";
-    my $timeStart = time();
     while($self->{SIDS}->{newconnection}->{status} == 0)
     {
         $self->debug(5,"OpenFile: can_read(",join(",",$self->{SIDS}->{newconnection}->{select}->can_read(0)),")");
@@ -1231,7 +1280,6 @@ sub OpenFile
 #           otherwise it returns after the timeout period.
 #
 ##############################################################################
-# checks for data on the socket, uses timeout passed to Connect()
 sub Process
 {
     my $self = shift;
@@ -1262,14 +1310,17 @@ sub Process
     # certain period of time and then return control to the user.
     #---------------------------------------------------------------------------
     my $block = 1;
-    my $timeStart = time();
+    my $timeEnd = ($timeout eq "") ? "" : time + $timeout;
     while($block == 1)
     {
         $self->debug(4,"Process: let's wait for data");
-        $self->debug(5,"Process: can_read(",$self->{SELECT}->can_read(0),")");
-        foreach my $connection ($self->{SELECT}->can_read(0))
-        {
 
+        my $now = time;
+        my $wait = (($timeEnd eq "") || ($timeEnd - $now > 10)) ? 10 :
+                    $timeEnd - $now;
+
+        foreach my $connection ($self->{SELECT}->can_read($wait))
+        {
             $self->debug(4,"Process: connection($connection)");
             $self->debug(4,"Process: sid($self->{SOCKETS}->{$connection})");
             $self->debug(4,"Process: connection_status($self->{SIDS}->{$self->{SOCKETS}->{$connection}}->{status})");
@@ -1313,19 +1364,13 @@ sub Process
 
         if ($timeout ne "")
         {
-            if ($timeout <= (time - $timeStart))
+            if (time >= $timeEnd)
             {
+                $self->debug(4,"Process: Everyone out of the pool! Time to stop blocking.");
                 $block = 0;
             }
-            else
-            {
-                select(undef,undef,undef,.25);
-            }
         }
-        else
-        {
-            select(undef,undef,undef,.25) if ($block == 1);
-        }
+
         $self->debug(4,"Process: timeout($timeout)");
 
         if (exists($self->{CB}->{update}))
@@ -1335,6 +1380,7 @@ sub Process
         }
 
         $block = 1 if $self->{SELECT}->can_read(0);
+
         #---------------------------------------------------------------------
         # Check for connections that need to be kept alive
         #---------------------------------------------------------------------
@@ -1343,13 +1389,20 @@ sub Process
         {
             next if ($sid eq "default");
             next if ($sid =~ /^server/);
-            if ((time - $self->{SIDS}->{$sid}->{keepalive}) > 60)
+            next if ($status{$sid} == -1);
+            if ((time - $self->{SIDS}->{$sid}->{keepalive}) > 10)
             {
                 $self->IgnoreActivity($sid,1);
-                $self->Send($sid," ");
+                $self->{SIDS}->{$sid}->{status} = -1
+                    if !defined($self->Send($sid," "));
+                $status{$sid} = -1 unless($self->{SIDS}->{$sid}->{status} == 1);
+                if ($status{$sid} == -1)
+                {
+                    $self->debug(2,"Process: Keep-Alive failed.  What the hell happened?!?!");
+                    $self->debug(2,"Process: connection_status($self->{SIDS}->{$sid}->{status})");
+                }
                 $self->IgnoreActivity($sid,0);
             }
-
         }
         #---------------------------------------------------------------------
         # Check for connections that have timed out.
@@ -1359,15 +1412,23 @@ sub Process
         {
             next if ($sid eq "default");
             next if ($sid =~ /^server/);
-            $self->debug(4,"Process: sid($sid) time(",time,") timeout($self->{SIDS}->{$sid}->{activitytimeout})") if exists($self->{SIDS}->{$sid}->{activitytimeout});
-            $self->debug(4,"Process: sid($sid) time(",time,") timeout(undef)") unless exists($self->{SIDS}->{$sid}->{activitytimeout});
+
+            if (exists($self->{SIDS}->{$sid}->{activitytimeout}))
+            {
+                $self->debug(4,"Process: sid($sid) time(",time,") timeout($self->{SIDS}->{$sid}->{activitytimeout})");
+            }
+            else
+            {
+                $self->debug(4,"Process: sid($sid) time(",time,") timeout(undef)");
+            }
+            
             $self->Respond($sid)
                 if (exists($self->{SIDS}->{$sid}->{activitytimeout}) &&
-            defined($self->GetRoot($sid)));
+                    defined($self->GetRoot($sid)));
             $self->Disconnect($sid)
                 if (exists($self->{SIDS}->{$sid}->{activitytimeout}) &&
-            ((time - $self->{SIDS}->{$sid}->{activitytimeout}) > 10) &&
-            ($self->{SIDS}->{$sid}->{status} != 1));
+                    ((time - $self->{SIDS}->{$sid}->{activitytimeout}) > 10) &&
+                     ($self->{SIDS}->{$sid}->{status} != 1));
         }
 
 
@@ -1375,11 +1436,11 @@ sub Process
         # If any of the connections have status == -1 then return so that the
         # user can handle it.
         #---------------------------------------------------------------------
-        foreach my $connection (keys(%status))
+        foreach my $sid (keys(%status))
         {
-            if ($status{$connection} == -1)
+            if ($status{$sid} == -1)
             {
-                $self->debug(4,"Process: sid($connection) is broken... let's tell someone and watch it hit the fan... =)");
+                $self->debug(4,"Process: sid($sid) is broken... let's tell someone and watch it hit the fan... =)");
                 $block = 0;
             }
         }
@@ -1405,7 +1466,7 @@ sub Process
     {
         $status{$sid} = shift @{$self->{SIDS}->{$sid}->{nodes}}
             if (($status{$sid} == 1) &&
-        ($#{$self->{SIDS}->{$sid}->{nodes}} > -1));
+                ($#{$self->{SIDS}->{$sid}->{nodes}} > -1));
     }
 
     return %status;
@@ -1583,22 +1644,29 @@ sub Send
     $self->debug(1,"Send: (@_)");
     $self->debug(3,"Send: sid($sid)");
     $self->debug(3,"Send: status($self->{SIDS}->{$sid}->{status})");
+    
+    $self->{SIDS}->{$sid}->{keepalive} = time;
 
     return if ($self->{SIDS}->{$sid}->{status} == -1);
 
-    $self->debug(3,"Send: socket($self->{SIDS}->{$sid}->{sock})");
-
     if (!defined($self->{SIDS}->{$sid}->{sock}))
     {
+        $self->debug(3,"Send: socket not defined");
         $self->{SIDS}->{$sid}->{status} = -1;
-        $self->SetErrorCode($sid,"Socket does not defined.");
+        $self->SetErrorCode($sid,"Socket not defined.");
         return;
+    }
+    else
+    {
+        $self->debug(3,"Send: socket($self->{SIDS}->{$sid}->{sock})");
     }
 
     $self->{SIDS}->{$sid}->{sock}->flush();
 
     if ($self->{SIDS}->{$sid}->{select}->can_write(0))
     {
+        $self->debug(3,"Send: can_write");
+        
         $self->{SENDSTRING} = join("",@_);
 
         $self->{SENDWRITTEN} = 0;
@@ -1608,9 +1676,16 @@ sub Send
         {
             $self->{SENDWRITTEN} = $self->{SIDS}->{$sid}->{sock}->syswrite($self->{SENDSTRING},$self->{SENDLENGTH},$self->{SENDOFFSET});
 
+            if (!defined($self->{SENDWRITTEN}))
+            {
+                $self->debug(4,"Send: SENDWRITTEN(undef)");
+                $self->debug(4,"Send: Ok... what happened?  Did we lose the connection?");
+                $self->{SIDS}->{$sid}->{status} = -1;
+                $self->SetErrorCode($sid,"Socket died for an unknown reason.");
+                return;
+            }
+            
             $self->debug(4,"Send: SENDWRITTEN($self->{SENDWRITTEN})");
-
-            return unless defined($self->{SENDWRITTEN});
 
             $self->{SENDLENGTH} -= $self->{SENDWRITTEN};
             $self->{SENDOFFSET} += $self->{SENDWRITTEN};

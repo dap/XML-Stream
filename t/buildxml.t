@@ -1,5 +1,5 @@
 use lib "./lib";
-use Test::More tests=>39;
+use Test::More tests=>56;
 
 BEGIN{ use_ok( "XML::Stream","Tree", "Node" ); }
 
@@ -80,12 +80,14 @@ foreach my $xmlType ("tree","node")
 
     my $sid = $stream->OpenFile("t/test.xml");
     my %status;
-    while( %status = $stream->Process()) {
+    while( %status = $stream->Process())
+    {
         last if ($status{$sid} == -1);
     }
 }
 
-sub onPacket {
+sub onPacket
+{
     my $xmlType = shift;
     my $sid = shift;
 
@@ -93,19 +95,23 @@ sub onPacket {
     {
         my (@tree) = @_;
 
-        is( &XML::Stream::BuildXML(\@tree,"<bingo/>"),
-                                   $packets[$packetIndex],
-                                   "packet[$packetIndex]" );
-
+        my $test = &XML::Stream::BuildXML(\@tree,"<bingo/>");
+        $test =~ s/\r//g;
+        is( $test, $packets[$packetIndex], "packet[$packetIndex]" );
     }
     if ($xmlType eq "node")
     {
         my ($node) = @_;
-        
-        is( &XML::Stream::BuildXML($node,"<bingo/>"),
-                                   $packets[$packetIndex],
-                                   "packet[$packetIndex]" );
 
+        my $test = &XML::Stream::BuildXML($node,"<bingo/>");
+        $test =~ s/\r//g;
+        is( $test, $packets[$packetIndex], "packet[$packetIndex]" );
+
+        $node->add_raw_xml("<bingo/>");
+        
+        my $test = &XML::Stream::BuildXML($node);
+        $test =~ s/\r//g;
+        is( $test, $packets[$packetIndex], "packet[$packetIndex]" );
     }
     $packetIndex++;
 }

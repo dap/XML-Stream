@@ -102,6 +102,15 @@ would be:
 
   remove_attrib(attrib) - remove the specified attribute from the node.
 
+  add_raw_xml(string,[string,...]) - directly add a string into the XML
+                                     packet as the last child, with no
+                                     translation.
+
+  get_raw_xml() - return all of the XML in a single string, undef if there
+                  is no raw XML to include.
+
+  remove_raw_xml() - remove all raw XML strings.
+
   children() - return all of the children of the node in a list.
 
   attrib() - returns a hash containing all of the attributes on this
@@ -129,7 +138,7 @@ it under the same terms as Perl itself.
 
 use vars qw($VERSION);
 
-$VERSION = "1.16";
+$VERSION = "1.17";
 
 sub new
 {
@@ -148,6 +157,7 @@ sub new
 
     $self->set_tag($tag) if defined($tag);
     $self->add_cdata($data) if defined($data);
+    $self->remove_raw_xml();
 
     return $self;
 }
@@ -261,13 +271,18 @@ sub remove_cdata
 {
     my $self = shift;
 
+    my @remove = ();
     foreach my $index (0..$#{$self->{CHILDREN}})
     {
         if ($self->{CHILDREN}->[$index]->get_tag() eq "__xmlstream__:node:cdata")
         {
-            splice(@{$self->{CHILDREN}},$index,1);
-            last;
+
+            unshift(@remove,$index);
         }
+    }
+    foreach my $index (@remove)
+    {
+        splice(@{$self->{CHILDREN}},$index,1);
     }
 } 
 
@@ -309,6 +324,30 @@ sub remove_attrib
 
     return unless exists($self->{ATTRIBS}->{$key});
     delete($self->{ATTRIBS}->{$key});
+}
+
+
+sub add_raw_xml
+{
+    my $self = shift;
+    my (@raw) = @_;
+
+    push(@{$self->{RAWXML}},@raw);
+}
+
+sub get_raw_xml
+{
+    my $self = shift;
+
+    return if ($#{$self->{RAWXML}} == -1);
+    return join("",@{$self->{RAWXML}});
+}
+
+
+sub remove_raw_xml
+{
+    my $self = shift;
+    $self->{RAWXML} = [];
 }
 
 
@@ -796,7 +835,10 @@ sub BuildXML
     }
 
     my @children = $node->children();
-    if (($#children > -1) || (defined($rawXML) && ($rawXML ne "")))
+    if (($#children > -1) ||
+        (defined($rawXML) && ($rawXML ne "")) ||
+        (defined($node->get_raw_xml()) && ($node->get_raw_xml() ne ""))
+       )
     {
         $str .= ">";
         foreach my $child (@children)
@@ -810,6 +852,10 @@ sub BuildXML
                 $str .= &XML::Stream::Node::BuildXML($child);
             }
         }
+        $str .= $node->get_raw_xml()
+            if (defined($node->get_raw_xml()) &&
+                ($node->get_raw_xml() ne "")
+               );
         $str .= $rawXML if (defined($rawXML) && ($rawXML ne ""));
         $str .= "</".$node->get_tag().">";
     }

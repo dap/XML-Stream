@@ -16,7 +16,7 @@ foreach my $type ("tree","node")
 
     
     @value = &XML::Stream::XPath($node,'last/@test');
-    is( $#value, 0, "'last/@test' - Only one match?");
+    is( $#value, 0, "'last/\@test' - Only one match?");
     is( $value[0], 5, "correct value?");
 
     
@@ -71,30 +71,30 @@ foreach my $type ("tree","node")
     
 
     @value = &XML::Stream::XPath($node,'library//chapter//para/@test');
-    is( $#value, 1, "'library//chapter//para/@test' - Only two matches?");
+    is( $#value, 1, "'library//chapter//para/\@test' - Only two matches?");
     is( $value[0], "b", "correct value?");
     is( $value[1], "a", "correct value?");
 
 
     @value = &XML::Stream::XPath($node,'filter[@id and @mytest="2"]/text()');
-    is( $#value, 0, "'filter[@id and @mytest=\"2\"]/text()' - Only one match?");
+    is( $#value, 0, "'filter[\@id and \@mytest=\"2\"]/text()' - Only one match?");
     is( $value[0], "valueA", "correct value?");
 
 
     @value = &XML::Stream::XPath($node,'newfilter[@bar and sub="foo1"]');
-    is( $#value, 0, "'newfilter[@bar and sub=\"foo1\"]' - Only one match?");
+    is( $#value, 0, "'newfilter[\@bar and sub=\"foo1\"]' - Only one match?");
     is( &XML::Stream::GetXMLData("tag",$value[0]), "newfilter", "is it <newfilter/>?");
     is( &XML::Stream::GetXMLData("value",$value[0],"sub"), "foo1", "correct value?");
     
     
     @value = &XML::Stream::XPath($node,'startest/*[@test]');
-    is( $#value, 1, "'startest/*[@test]' - Only two matches?");
+    is( $#value, 1, "'startest/*[\@test]' - Only two matches?");
     is( &XML::Stream::GetXMLData("tag",$value[0]), "foo", "is the first one <foo/>?");
     is( &XML::Stream::GetXMLData("tag",$value[1]), "bing", "is the second one <bing/>?");
 
     
     @value = &XML::Stream::XPath($node,'startest/*[not(@test)]');
-    is( $#value, 0, "'startest/*[not(@test)]' - Only one matches?");
+    is( $#value, 0, "'startest/*[not(\@test)]' - Only one matches?");
     is( &XML::Stream::GetXMLData("tag",$value[0]), "bar", "is it <bar/>?");
 
     @value = &XML::Stream::XPath($node,'startest/*[name() != "foo"]');

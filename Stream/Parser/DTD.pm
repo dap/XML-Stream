@@ -54,7 +54,7 @@ it under the same terms as Perl itself.
 use strict;
 use vars qw($VERSION);
 
-$VERSION = "1.16";
+$VERSION = "1.17";
 
 sub new
 {

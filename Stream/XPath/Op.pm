@@ -32,7 +32,7 @@ use 5.006_001;
 use strict;
 use vars qw($VERSION);
 
-$VERSION = "1.16";
+$VERSION = "1.17";
 
 sub new
 {
@@ -183,8 +183,8 @@ sub display
     my $space = shift;
     $space = "" unless defined($space);
 
-    print "OP: type(CONTEXT) op: \n";
-    $self->{OP}->display("    ");
+    print "${space}OP: type(CONTEXT) op: \n";
+    $self->{OP}->display("$space    ");
 }
 
 
@@ -694,12 +694,12 @@ sub display
     my $space = shift;
     $space = "" unless defined($space);
 
-    print "OP: type(OR)\n";
+    print "${space}OP: type(OR)\n";
     print "$space    op_l: ";
-    $self->{OP_L}->display("    ");
+    $self->{OP_L}->display("$space    ");
     
     print "$space    op_r: ";
-    $self->{OP_R}->display("    ");
+    $self->{OP_R}->display("$space    ");
 }
 
 

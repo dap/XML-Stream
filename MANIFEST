@@ -5,16 +5,16 @@ LICENSE.LGPL
 MANIFEST
 MANIFEST.SKIP
 Makefile.PL
-Stream.pm
-Stream/Tree.pm
-Stream/Node.pm
-Stream/Namespace.pm
-Stream/Parser.pm
-Stream/Parser/DTD.pm
-Stream/XPath.pm
-Stream/XPath/Op.pm
-Stream/XPath/Query.pm
-Stream/XPath/Value.pm
+lib/XML/Stream.pm
+lib/XML/Stream/Node.pm
+lib/XML/Stream/Namespace.pm
+lib/XML/Stream/Parser.pm
+lib/XML/Stream/Parser/DTD.pm
+lib/XML/Stream/Tree.pm
+lib/XML/Stream/XPath.pm
+lib/XML/Stream/XPath/Op.pm
+lib/XML/Stream/XPath/Query.pm
+lib/XML/Stream/XPath/Value.pm
 t/buildxml.t
 t/lib/Test/Builder.pm
 t/lib/Test/More.pm
@@ -27,3 +27,4 @@ t/tcpip2ssl.t
 t/test.xml
 t/xml2config.t
 t/xpath.t
+META.yml                                 Module meta-data (added by MakeMaker)

@@ -62,7 +62,7 @@ BEGIN {
     }
 }
 
-$VERSION = "1.17";
+$VERSION = "1.18";
 
 sub new
 {
@@ -409,6 +409,7 @@ sub attribution
 
     return %attribs;
 }
+
 
 sub entityCheck
 {

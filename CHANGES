@@ -1,3 +1,10 @@
+1.18
+====
+  - Added initial cut at XMPP 1.0 support.
+  - Fixed timeout for Connect().  It was horribly broken and in
+    efficient.  Thanks to Jesper Krogh.
+  - Added timeout to socket creation.
+
 1.17
 ====
   - Added patch to make the Process a little faster by putting the

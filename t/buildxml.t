@@ -93,15 +93,15 @@ sub onPacket
 
     if ($xmlType eq "tree")
     {
-        my (@tree) = @_;
+        my $tree = shift;
 
-        my $test = &XML::Stream::BuildXML(\@tree,"<bingo/>");
+        my $test = &XML::Stream::BuildXML($tree,"<bingo/>");
         $test =~ s/\r//g;
         is( $test, $packets[$packetIndex], "packet[$packetIndex]" );
     }
     if ($xmlType eq "node")
     {
-        my ($node) = @_;
+        my $node = shift;
 
         my $test = &XML::Stream::BuildXML($node,"<bingo/>");
         $test =~ s/\r//g;
@@ -109,7 +109,7 @@ sub onPacket
 
         $node->add_raw_xml("<bingo/>");
         
-        my $test = &XML::Stream::BuildXML($node);
+        $test = &XML::Stream::BuildXML($node);
         $test =~ s/\r//g;
         is( $test, $packets[$packetIndex], "packet[$packetIndex]" );
     }

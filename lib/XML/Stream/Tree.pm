@@ -72,7 +72,7 @@ it under the same terms as Perl itself.
 
 use vars qw($VERSION);
 
-$VERSION = "1.17";
+$VERSION = "1.18";
 
 ##############################################################################
 #
@@ -179,19 +179,40 @@ sub _handle_close
 
         push @{$self->{SIDS}->{$sid}->{tree}}, $CLOSED;
 
-        if(defined($self->{SIDS}->{$sid}->{tree}->[0]) &&
-           ($self->{SIDS}->{$sid}->{tree}->[0] eq "stream:error"))
+        if (ref($self) ne "XML::Stream::Parser")
         {
-            $self->{SIDS}->{$sid}->{streamerror} =
-                $self->{SIDS}->{$sid}->{tree}[1]->[2];
-        }
-        else
-        {
-            if (ref($self) ne "XML::Stream::Parser")
+            my $stream_prefix = $self->StreamPrefix($sid);
+
+            if(defined($self->{SIDS}->{$sid}->{tree}->[0]) &&
+               ($self->{SIDS}->{$sid}->{tree}->[0] =~ /^${stream_prefix}\:/))
+            { 
+                my @tree = @{$self->{SIDS}->{$sid}->{tree}};
+                $self->{SIDS}->{$sid}->{tree} = [];
+                $self->ProcessStreamPacket($sid,\@tree);
+            }
+            else
             {
                 my @tree = @{$self->{SIDS}->{$sid}->{tree}};
                 $self->{SIDS}->{$sid}->{tree} = [];
-                &{$self->{CB}->{node}}($sid,@tree);
+                
+                my @special =
+                    &XML::Stream::XPath(
+                        \@tree,
+                        '[@xmlns="'.&XML::Stream::ConstXMLNS("xmpp-sasl").'" or @xmlns="'.&XML::Stream::ConstXMLNS("xmpp-tls").'"]'
+                    );
+                if ($#special > -1)
+                {
+                    my $xmlns = &GetXMLData("value",\@tree,"","xmlns");
+
+                    $self->ProcessSASLPacket($sid,\@tree)
+                        if ($xmlns eq &XML::Stream::ConstXMLNS("xmpp-sasl"));
+                    $self->ProcessTLSPacket($sid,\@tree)
+                        if ($xmlns eq &XML::Stream::ConstXMLNS("xmpp-tls"));
+                }
+                else
+                {
+                    &{$self->{CB}->{node}}($sid,\@tree);
+                }
             }
         }
     }

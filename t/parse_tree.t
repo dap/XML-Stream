@@ -24,23 +24,23 @@ foreach (2..5) {
 
 sub onPacket {
   my $sid = shift;
-  my (@packet) = @_;
+  my $packet = shift;
 
-  return unless exists($packet[1]->[0]->{test});
+  return unless exists($packet->[1]->[0]->{test});
 
-  if ($packet[1]->[0]->{test} eq "2") {
+  if ($packet->[1]->[0]->{test} eq "2") {
     $tests[2] = 1;
   }
-  if ($packet[1]->[0]->{test} eq "3") {
-    if (defined($packet[1]->[3]) && ($packet[1]->[3] eq "bar")) {
+  if ($packet->[1]->[0]->{test} eq "3") {
+    if (defined($packet->[1]->[3]) && ($packet->[1]->[3] eq "bar")) {
       $tests[3] = 1;
     }
   }
-  if ($packet[1]->[0]->{test} eq "4") {
+  if ($packet->[1]->[0]->{test} eq "4") {
     $tests[4] = 0;
   }
-  if ($packet[1]->[0]->{test} eq "5") {
-    if (defined($packet[1]->[4]->[4]->[4]->[2]) && ($packet[1]->[4]->[4]->[4]->[2] eq "This is a test.")) {
+  if ($packet->[1]->[0]->{test} eq "5") {
+    if (defined($packet->[1]->[4]->[4]->[4]->[2]) && ($packet->[1]->[4]->[4]->[4]->[2] eq "This is a test.")) {
       $tests[5] = 1;
     }
   }

@@ -138,7 +138,7 @@ it under the same terms as Perl itself.
 
 use vars qw($VERSION);
 
-$VERSION = "1.17";
+$VERSION = "1.18";
 
 sub new
 {
@@ -510,24 +510,46 @@ sub _handle_close
 
     my $CLOSED = pop @{$self->{SIDS}->{$sid}->{node}};
 
+    $self->debug(2,"Node: _handle_close: check2(",$#{$self->{SIDS}->{$sid}->{node}},")");
+    
     if($#{$self->{SIDS}->{$sid}->{node}} == -1)
     {
-
         push @{$self->{SIDS}->{$sid}->{node}}, $CLOSED;
 
-        if(defined($self->{SIDS}->{$sid}->{node}->[0]) &&
-           ($self->{SIDS}->{$sid}->{node}->[0]->get_tag() eq "stream:error"))
+        if (ref($self) ne "XML::Stream::Parser")
         {
-            $self->{SIDS}->{$sid}->{streamerror} =
-                $self->{SIDS}->{$sid}->{node}->[0]->get_cdata();
-        }
-        else
-        {
-            if (ref($self) ne "XML::Stream::Parser")
+            my $stream_prefix = $self->StreamPrefix($sid);
+            
+            if(defined($self->{SIDS}->{$sid}->{node}->[0]) &&
+               ($self->{SIDS}->{$sid}->{node}->[0]->get_tag() =~ /^${stream_prefix}\:/))
             {
                 my $node = $self->{SIDS}->{$sid}->{node}->[0];
                 $self->{SIDS}->{$sid}->{node} = [];
-                &{$self->{CB}->{node}}($sid,$node);
+                $self->ProcessStreamPacket($sid,$node);
+            }
+            else
+            {
+                my $node = $self->{SIDS}->{$sid}->{node}->[0];
+                $self->{SIDS}->{$sid}->{node} = [];
+
+                my @special =
+                    &XML::Stream::XPath(
+                        $node,
+                        '[@xmlns="'.&XML::Stream::ConstXMLNS("xmpp-sasl").'" or @xmlns="'.&XML::Stream::ConstXMLNS("xmpp-tls").'"]'
+                    );
+                if ($#special > -1)
+                {
+                    my $xmlns = $node->get_attrib("xmlns");
+                    
+                    $self->ProcessSASLPacket($sid,$node)
+                        if ($xmlns eq &XML::Stream::ConstXMLNS("xmpp-sasl"));
+                    $self->ProcessTLSPacket($sid,$node)
+                        if ($xmlns eq &XML::Stream::ConstXMLNS("xmpp-tls"));
+                }
+                else
+                {
+                    &{$self->{CB}->{node}}($sid,$node);
+                }
             }
         }
     }

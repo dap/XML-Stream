@@ -88,7 +88,7 @@ XML::Stream - Creates and XML Stream connection and parses return data
           from=>string,             port, and namespace are required.
           myhostname=>string,       namespaces allows you to use
           namespace=>string,        XML::Stream::Namespace objects.
-          namespaced=>array,        to is needed if you want the stream
+          namespaces=>array,        to is needed if you want the stream
           connectiontype=>string,   to attribute to be something other
           ssl=>0|1,                 than the hostname you are connecting
           srv=>string)              to.  from is needed if you want the
@@ -251,10 +251,30 @@ use IO::Select;
 use FileHandle;
 use Carp;
 use POSIX;
+use Authen::SASL;
+use MIME::Base64;
 
 $SIG{PIPE} = "IGNORE";
 
-use vars qw($VERSION $PAC $SSL $NONBLOCKING %HANDLERS $NETDNS);
+use vars qw($VERSION $PAC $SSL $NONBLOCKING %HANDLERS $NETDNS %XMLNS );
+
+##############################################################################
+# Define the namespaces in an easy/constant manner.
+#-----------------------------------------------------------------------------
+# 0.9
+#-----------------------------------------------------------------------------
+$XMLNS{'stream'}        = "http://etherx.jabber.org/streams";
+
+#-----------------------------------------------------------------------------
+# 1.0
+#-----------------------------------------------------------------------------
+$XMLNS{'xmppstreams'}   = "urn:ietf:params:xml:ns:xmpp-streams";
+$XMLNS{'xmpp-bind'}     = "urn:ietf:params:xml:ns:xmpp-bind";
+$XMLNS{'xmpp-sasl'}     = "urn:ietf:params:xml:ns:xmpp-sasl";
+$XMLNS{'xmpp-session'}  = "urn:ietf:params:xml:ns:xmpp-session";
+$XMLNS{'xmpp-tls'}      = "urn:ietf:params:xml:ns:xmpp-tls";
+##############################################################################
+
 
 BEGIN {
     if( $] >= 5.008 )
@@ -275,7 +295,7 @@ else
 }
 
 
-$VERSION = "1.17";
+$VERSION = "1.18";
 $NONBLOCKING = 0;
 
 use XML::Stream::Namespace;
@@ -429,42 +449,15 @@ sub new
 }
 
 
-###########################################################################
-#
-# debug - prints the arguments to the debug log if debug is turned on.
-#
-###########################################################################
-sub debug
-{
-    return if ($_[1] > $_[0]->{DEBUGLEVEL});
-    my $self = shift;
-    my ($limit,@args) = @_;
-    return if ($self->{DEBUGFILE} eq "");
-    my $fh = $self->{DEBUGFILE};
-    if ($self->{DEBUGTIME} == 1)
-    {
-        my ($sec,$min,$hour) = localtime(time);
-        print $fh sprintf("[%02d:%02d:%02d] ",$hour,$min,$sec);
-    }
-    print $fh "XML::Stream: @args\n";
-}
 
 
-sub Host2SID
-{
-    my $self = shift;
-    my $hostname = shift;
-
-    foreach my $sid (keys(%{$self->{SIDS}}))
-    {
-        next if ($sid eq "default");
-        next if ($sid =~ /^server/);
-
-        return $sid if ($self->{SIDS}->{$sid}->{hostname} eq $hostname);
-    }
-    return;
-}
-
+##############################################################################
+#+----------------------------------------------------------------------------
+#|
+#| Incoming Connection Functions
+#|
+#+----------------------------------------------------------------------------
+##############################################################################
 
 ##############################################################################
 #
@@ -554,6 +547,11 @@ sub Listen
 }
 
 
+##############################################################################
+#
+# ConnectionAccept - accept an incoming connection.
+#
+##############################################################################
 sub ConnectionAccept
 {
     my $self = shift;
@@ -604,61 +602,25 @@ sub ConnectionAccept
 }
 
 
-sub InitConnection
-{
-    my $self = shift;
-    my $sid = shift;
-    my $serverid = shift;
-
-    #---------------------------------------------------------------------------
-    # Set the default STATUS so that we can keep track of it throughout the
-    # session.
-    #   1 = no errors
-    #   0 = no data has been received yet
-    #  -1 = error from handlers
-    #  -2 = error but keep the connection alive so that we can send some info.
-    #---------------------------------------------------------------------------
-    $self->{SIDS}->{$sid}->{status} = 0;
-
-    #---------------------------------------------------------------------------
-    # A storage place for when we don't have a callback registered and we need
-    # to stockpile the nodes we receive until Process is called and we return
-    # them.
-    #---------------------------------------------------------------------------
-    $self->{SIDS}->{$sid}->{nodes} = ();
-
-    #---------------------------------------------------------------------------
-    # If there is an error on the stream, then we need a place to indicate that.
-    #---------------------------------------------------------------------------
-    $self->{SIDS}->{$sid}->{streamerror} = "";
-
-    #---------------------------------------------------------------------------
-    # Grab the init time so that we can keep the connection alive by sending " "
-    #---------------------------------------------------------------------------
-    $self->{SIDS}->{$sid}->{keepalive} = time;
-
-    #---------------------------------------------------------------------------
-    # Keep track of the "server" we are connected to so we can check stuff
-    # later.
-    #---------------------------------------------------------------------------
-    $self->{SIDS}->{$sid}->{serverid} = $serverid;
-
-    #---------------------------------------------------------------------------
-    # First acitivty is the connection... duh. =)
-    #---------------------------------------------------------------------------
-    $self->MarkActivity($sid);
-}
-
-
+##############################################################################
+#
+# Respond - If this is a listening socket then we need to respond to the
+#           opening <stream:stream/>.
+#
+##############################################################################
 sub Respond
 {
     my $self = shift;
     my $sid = shift;
     my $serverid = $self->{SIDS}->{$sid}->{serverid};
 
-    if ($self->GetRoot($sid)->{xmlns} ne $self->{SIDS}->{$serverid}->{namespace})
+    my $root = $self->GetRoot($sid);
+    
+    if ($root->{xmlns} ne $self->{SIDS}->{$serverid}->{namespace})
     {
-        $self->Send($sid,"<stream:error>Invalid namespace specified.</stream:error>");
+        my $error = $self->StreamError($sid,"invalid-namespace","Invalid namespace specified");
+        $self->Send($sid,$error);
+
         $self->{SIDS}->{$sid}->{sock}->flush();
         select(undef,undef,undef,1);
         $self->Disconnect($sid);
@@ -667,22 +629,24 @@ sub Respond
     #---------------------------------------------------------------------------
     # Next, we build the opening handshake.
     #---------------------------------------------------------------------------
-    my $stream = '<?xml version="1.0"?>';
-    $stream .= '<stream:stream ';
-    $stream .= 'xmlns:stream="http://etherx.jabber.org/streams" ';
-    $stream .= 'xmlns="'.$self->{SIDS}->{$serverid}->{namespace}.'" ';
-    $stream .= 'from="'.$self->{SIDS}->{$serverid}->{hostname}.'" ' unless exists($self->{SIDS}->{$serverid}->{from});
-    $stream .= 'from="'.$self->{SIDS}->{$serverid}->{from}.'" ' if exists($self->{SIDS}->{$serverid}->{from});
-    $stream .= 'to="'.$self->GetRoot($sid)->{from}.'" ';
-    $stream .= 'id="'.$sid.'" ';
-    my $namespaces = "";
-    my $ns;
-    foreach $ns (@{$self->{SIDS}->{$serverid}->{namespaces}})
-    {
-        $namespaces .= " ".$ns->GetStream();
-        $stream .= " ".$ns->GetStream();
-    }
-    $stream .= ">";
+    my %stream_args;
+
+    $stream_args{from} =
+        (exists($self->{SIDS}->{$serverid}->{from}) ?
+         $self->{SIDS}->{$serverid}->{from} :
+         $self->{SIDS}->{$serverid}->{hostname}
+        );
+
+    $stream_args{to} = $self->GetRoot($sid)->{from};
+    $stream_args{id} = $sid;
+    $stream_args{namespaces} = $self->{SIDS}->{$serverid}->{namespaces};
+
+    my $stream =
+        $self->StreamHeader(
+            xmlns=>$self->{SIDS}->{$serverid}->{namespace},
+            xmllang=>"en",
+            %stream_args
+        );
 
     #---------------------------------------------------------------------------
     # Then we send the opening handshake.
@@ -692,18 +656,15 @@ sub Respond
 }
 
 
-sub nonblock
-{
-    my $self = shift;
-    my $socket = shift;
-    my $flags;
 
-    $flags = fcntl($socket, F_GETFL, 0)
-        or die "Can't get flags for socket: $!\n";
-    fcntl($socket, F_SETFL, $flags | O_NONBLOCK)
-        or die "Can't make socket nonblocking: $!\n";
-}
 
+##############################################################################
+#+----------------------------------------------------------------------------
+#|
+#| Outgoing Connection Functions
+#|
+#+----------------------------------------------------------------------------
+##############################################################################
 
 ##############################################################################
 #
@@ -717,12 +678,18 @@ sub Connect
 {
     my $self = shift;
 
-    my $timeout = exists $_{timeout} ? delete $_{timeout} : "";
     foreach my $key (keys(%{$self->{SIDS}->{default}}))
     {
         $self->{SIDS}->{newconnection}->{$key} = $self->{SIDS}->{default}->{$key};
     }
     while($#_ >= 0) { $self->{SIDS}->{newconnection}->{ lc pop(@_) } = pop(@_); }
+    
+    my $timeout = exists($self->{SIDS}->{newconnection}->{timeout}) ?
+                  delete($self->{SIDS}->{newconnection}->{timeout}) :
+                  "";
+
+    $self->debug(4,"Connect: timeout($timeout)");
+    
 
     if (exists($self->{SIDS}->{newconnection}->{srv}))
     {
@@ -762,8 +729,6 @@ sub Connect
         return;
     }
 
-    $self->InitConnection("newconnection","newconnection");
-
     #---------------------------------------------------------------------------
     # TCP/IP
     #---------------------------------------------------------------------------
@@ -795,7 +760,9 @@ sub Connect
         $self->{SIDS}->{newconnection}->{sock} =
             new IO::Socket::INET(PeerAddr=>$self->{SIDS}->{newconnection}->{hostname},
                                  PeerPort=>$self->{SIDS}->{newconnection}->{port},
-                                 Proto=>"tcp");
+                                 Proto=>"tcp",
+                                 (($timeout ne "") ? ( Timeout=>$timeout ) : ()),
+                                );
         return unless $self->{SIDS}->{newconnection}->{sock};
 
         if ($self->{SIDS}->{newconnection}->{ssl} == 1)
@@ -923,7 +890,9 @@ sub Connect
             $self->{SIDS}->{newconnection}->{sock} =
             new IO::Socket::INET(PeerAddr=>$self->{SIDS}->{newconnection}->{hostname},
                                  PeerPort=>$self->{SIDS}->{newconnection}->{port},
-                                 Proto=>"tcp");
+                                 Proto=>"tcp",
+                                 (($timeout ne "") ? ( Timeout=>$timeout ) : ()),
+                                );
             $connected = defined($self->{SIDS}->{newconnection}->{sock});
             $self->debug(1,"Connect: Combo #0: connected($connected)");
             #            if ($connected)
@@ -950,7 +919,9 @@ sub Connect
             $self->{SIDS}->{newconnection}->{sock} =
                 new IO::Socket::INET(PeerAddr=>$self->{SIDS}->{newconnection}->{httpproxyhostname},
                                      PeerPort=>$self->{SIDS}->{newconnection}->{httpproxyport},
-                                     Proto=>"tcp");
+                                     Proto=>"tcp",
+                                     (($timeout ne "") ? ( Timeout=>$timeout ) : ()),
+                                    );
             $connected = defined($self->{SIDS}->{newconnection}->{sock});
             $self->debug(1,"Connect: Combo #1: connected($connected)");
             if ($connected)
@@ -977,7 +948,9 @@ sub Connect
             $self->{SIDS}->{newconnection}->{sock} =
                 new IO::Socket::INET(PeerAddr=>$self->{SIDS}->{newconnection}->{httpproxyhostname},
                                      PeerPort=>$self->{SIDS}->{newconnection}->{httpproxyport},
-                                     Proto=>"tcp");
+                                     Proto=>"tcp",
+                                     (($timeout ne "") ? ( Timeout=>$timeout ) : ()),
+                                    );
             $connected = defined($self->{SIDS}->{newconnection}->{sock});
             $self->debug(1,"Connect: Combo #2: connected($connected)");
             if ($connected)
@@ -1050,39 +1023,68 @@ sub Connect
 
     $self->{SIDS}->{newconnection}->{sock}->autoflush(1);
 
+    return $self->OpenStream("newconnection",$timeout);
+}
+
+
+##############################################################################
+#
+# OpenStream - Send the opening stream and save the root element info.
+#
+##############################################################################
+sub OpenStream
+{
+    my $self = shift;
+    my $currsid = shift;
+    my $timeout = shift;
+    $timeout = "" unless defined($timeout);
+
+    $self->InitConnection($currsid,$currsid);
+
     #---------------------------------------------------------------------------
     # Next, we build the opening handshake.
     #---------------------------------------------------------------------------
-    my $stream;
-    $stream .= '<?xml version="1.0"?>';
-    $stream .= '<stream:stream ';
-    $stream .= 'xmlns:stream="http://etherx.jabber.org/streams" ';
-    $stream .= 'xmlns="'.$self->{SIDS}->{newconnection}->{namespace}.'" ';
-    if (($self->{SIDS}->{newconnection}->{connectiontype} eq "tcpip") ||
-        ($self->{SIDS}->{newconnection}->{connectiontype} eq "http"))
+    my %stream_args;
+    
+    if (($self->{SIDS}->{$currsid}->{connectiontype} eq "tcpip") ||
+        ($self->{SIDS}->{$currsid}->{connectiontype} eq "http"))
     {
-        $stream .= 'to="'.$self->{SIDS}->{newconnection}->{hostname}.'" ' unless exists($self->{SIDS}->{newconnection}->{to});
-        $stream .= 'to="'.$self->{SIDS}->{newconnection}->{to}.'" ' if exists($self->{SIDS}->{newconnection}->{to});
-        $stream .= 'from="'.$self->{SIDS}->{newconnection}->{myhostname}.'" ' if (!exists($self->{SIDS}->{newconnection}->{from}) && ($self->{SIDS}->{newconnection}->{myhostname} ne ""));
-        $stream .= 'from="'.$self->{SIDS}->{newconnection}->{from}.'" ' if exists($self->{SIDS}->{newconnection}->{from});
-        $stream .= 'id="'.$self->{SIDS}->{newconnection}->{id}.'"' if (exists($self->{SIDS}->{newconnection}->{id}) && ($self->{SIDS}->{newconnection}->{id} ne ""));
-        my $namespaces = "";
-        my $ns;
-        foreach $ns (@{$self->{SIDS}->{newconnection}->{namespaces}})
-        {
-            $namespaces .= " ".$ns->GetStream();
-            $stream .= " ".$ns->GetStream();
-        }
+        $stream_args{to}= $self->{SIDS}->{$currsid}->{hostname}
+            unless exists($self->{SIDS}->{$currsid}->{to});
+        
+        $stream_args{to} = $self->{SIDS}->{$currsid}->{to}
+            if exists($self->{SIDS}->{$currsid}->{to});
+
+        $stream_args{from} = $self->{SIDS}->{$currsid}->{myhostname}
+            if (!exists($self->{SIDS}->{$currsid}->{from}) &&
+                ($self->{SIDS}->{$currsid}->{myhostname} ne "")
+               );
+        
+        $stream_args{from} = $self->{SIDS}->{$currsid}->{from}
+            if exists($self->{SIDS}->{$currsid}->{from});
+        
+        $stream_args{id} = $self->{SIDS}->{$currsid}->{id}
+            if (exists($self->{SIDS}->{$currsid}->{id}) &&
+                ($self->{SIDS}->{$currsid}->{id} ne "")
+               );
+
+        $stream_args{namespaces} = $self->{SIDS}->{$currsid}->{namespaces};
     }
-    $stream .= ">";
+    
+    my $stream =
+        $self->StreamHeader(
+            xmlns=>$self->{SIDS}->{$currsid}->{namespace},
+            xmllang=>"en",
+            %stream_args
+        );
 
     #---------------------------------------------------------------------------
     # Create the XML::Stream::Parser and register our callbacks
     #---------------------------------------------------------------------------
-    $self->{SIDS}->{newconnection}->{parser} =
+    $self->{SIDS}->{$currsid}->{parser} =
         new XML::Stream::Parser(%{$self->{DEBUGARGS}},
                                 nonblocking=>$NONBLOCKING,
-                                sid=>"newconnection",
+                                sid=>$currsid,
                                 style=>$self->{DATASTYLE},
                                 Handlers=>{
                                     startElement=>sub{ $self->_handle_root(@_) },
@@ -1091,30 +1093,30 @@ sub Connect
                                 }
                                );
 
-    $self->{SIDS}->{newconnection}->{select} =
-        new IO::Select($self->{SIDS}->{newconnection}->{sock});
+    $self->{SIDS}->{$currsid}->{select} =
+        new IO::Select($self->{SIDS}->{$currsid}->{sock});
 
-    if (($self->{SIDS}->{newconnection}->{connectiontype} eq "tcpip") ||
-            ($self->{SIDS}->{newconnection}->{connectiontype} eq "http"))
+    if (($self->{SIDS}->{$currsid}->{connectiontype} eq "tcpip") ||
+            ($self->{SIDS}->{$currsid}->{connectiontype} eq "http"))
     {
-        $self->{SELECT} = new IO::Select($self->{SIDS}->{newconnection}->{sock});
-        $self->{SOCKETS}->{$self->{SIDS}->{newconnection}->{sock}} = "newconnection";
+        $self->{SELECT} = new IO::Select($self->{SIDS}->{$currsid}->{sock});
+        $self->{SOCKETS}->{$self->{SIDS}->{$currsid}->{sock}} = "newconnection";
     }
 
-    if ($self->{SIDS}->{newconnection}->{connectiontype} eq "stdinout")
+    if ($self->{SIDS}->{$currsid}->{connectiontype} eq "stdinout")
     {
         $self->{SELECT} = new IO::Select(*STDIN);
-        $self->{SOCKETS}->{$self->{SIDS}->{newconnection}->{sock}} = "newconnection";
-        $self->{SOCKETS}->{*STDIN} = "newconnection";
-        $self->{SIDS}->{newconnection}->{select}->add(*STDIN);
+        $self->{SOCKETS}->{$self->{SIDS}->{$currsid}->{sock}} = $currsid;
+        $self->{SOCKETS}->{*STDIN} = $currsid;
+        $self->{SIDS}->{$currsid}->{select}->add(*STDIN);
     }
 
-    $self->{SIDS}->{newconnection}->{status} = 0;
+    $self->{SIDS}->{$currsid}->{status} = 0;
 
     #---------------------------------------------------------------------------
     # Then we send the opening handshake.
     #---------------------------------------------------------------------------
-    $self->Send("newconnection",$stream) || return;
+    $self->Send($currsid,$stream) || return;
 
     #---------------------------------------------------------------------------
     # Before going on let's make sure that the server responded with a valid
@@ -1122,15 +1124,19 @@ sub Connect
     #---------------------------------------------------------------------------
     my $buff = "";
     my $timeEnd = ($timeout eq "") ? "" : time + $timeout;
-    while($self->{SIDS}->{newconnection}->{status} == 0)
+    while($self->{SIDS}->{$currsid}->{status} == 0)
     {
-        $self->debug(5,"Connect: can_read(",join(",",$self->{SIDS}->{newconnection}->{select}->can_read(0)),")");
-        if ($self->{SIDS}->{newconnection}->{select}->can_read(0))
+        my $now = time;
+        my $wait = (($timeEnd eq "") || ($timeEnd - $now > 10)) ? 10 :
+                    $timeEnd - $now;
+
+        $self->debug(5,"Connect: can_read(",join(",",$self->{SIDS}->{$currsid}->{select}->can_read(0)),")");
+        if ($self->{SIDS}->{$currsid}->{select}->can_read($wait))
         {
-            $self->{SIDS}->{newconnection}->{status} = -1
-                unless defined($buff = $self->Read("newconnection"));
-            return unless($self->{SIDS}->{newconnection}->{status} == 0);
-            return unless($self->ParseStream("newconnection",$buff) == 1);
+            $self->{SIDS}->{$currsid}->{status} = -1
+                unless defined($buff = $self->Read($currsid));
+            return unless($self->{SIDS}->{$currsid}->{status} == 0);
+            return unless($self->ParseStream($currsid,$buff) == 1);
         }
         else
         {
@@ -1138,63 +1144,50 @@ sub Connect
             {
                 if (time >= $timeEnd)
                 {
-                    $self->SetErrorCode("newconnection","Timeout limit reached");
+                    $self->SetErrorCode($currsid,"Timeout limit reached");
                     return;
                 }
             }
         }
 
-        return if($self->{SIDS}->{newconnection}->{select}->has_exception(0));
+        return if($self->{SIDS}->{$currsid}->{select}->has_exception(0));
     }
-    return if($self->{SIDS}->{newconnection}->{status} != 1);
+    return if($self->{SIDS}->{$currsid}->{status} != 1);
 
-    $self->debug(3,"Connect: status($self->{SIDS}->{newconnection}->{status})");
+    $self->debug(3,"Connect: status($self->{SIDS}->{$currsid}->{status})");
 
-    my $sid = $self->GetRoot("newconnection")->{id};
-    foreach my $key (keys(%{$self->{SIDS}->{newconnection}}))
+    my $sid = $self->GetRoot($currsid)->{id};
+    $| = 1;
+    foreach my $key (keys(%{$self->{SIDS}->{$currsid}}))
     {
-        $self->{SIDS}->{$sid}->{$key} = $self->{SIDS}->{newconnection}->{$key};
+        $self->{SIDS}->{$sid}->{$key} = $self->{SIDS}->{$currsid}->{$key};
     }
     $self->{SIDS}->{$sid}->{parser}->setSID($sid);
 
-    if (($self->{SIDS}->{newconnection}->{connectiontype} eq "tcpip") ||
-        ($self->{SIDS}->{newconnection}->{connectiontype} eq "http"))
+    if (($self->{SIDS}->{$sid}->{connectiontype} eq "tcpip") ||
+        ($self->{SIDS}->{$sid}->{connectiontype} eq "http"))
     {
-        $self->{SOCKETS}->{$self->{SIDS}->{newconnection}->{sock}} = $sid;
+        $self->{SOCKETS}->{$self->{SIDS}->{$currsid}->{sock}} = $sid;
     }
 
-    if ($self->{SIDS}->{newconnection}->{connectiontype} eq "stdinout")
+    if ($self->{SIDS}->{$sid}->{connectiontype} eq "stdinout")
     {
-        $self->{SOCKETS}->{$self->{SIDS}->{newconnection}->{sock}} = $sid;
+        $self->{SOCKETS}->{$self->{SIDS}->{$currsid}->{sock}} = $sid;
         $self->{SOCKETS}->{*STDIN} = $sid;
     }
 
-    delete($self->{SIDS}->{newconnection});
+    delete($self->{SIDS}->{$currsid});
 
-    return $self->GetRoot($sid);
-}
-
-
-##############################################################################
-#
-# Disconnect - sends the closing XML tag and shuts down the socket.
-#
-##############################################################################
-sub Disconnect
-{
-    my $self = shift;
-    my $sid = shift;
-
-    $self->Send($sid,"</stream:stream>");
-    close($self->{SIDS}->{$sid}->{sock})
-        if (($self->{SIDS}->{$sid}->{connectiontype} eq "tcpip") ||
-    ($self->{SIDS}->{$sid}->{connectiontype} eq "http"));
-    delete($self->{SOCKETS}->{$self->{SIDS}->{$sid}->{sock}});
-    foreach my $key (keys(%{$self->{SIDS}->{$sid}}))
+    if (exists($self->GetRoot($sid)->{version}) &&
+        ($self->GetRoot($sid)->{version} ne ""))
     {
-        delete($self->{SIDS}->{$sid}->{$key});
+        while(!$self->ReceivedStreamFeatures($sid))
+        {
+            $self->Process(1);
+        }
     }
-    delete($self->{SIDS}->{$sid});
+        
+    return $self->GetRoot($sid);
 }
 
 
@@ -1215,6 +1208,8 @@ sub OpenFile
 
     $self->{SIDS}->{newconnection}->{sock} = new FileHandle($file);
     $self->{SIDS}->{newconnection}->{sock}->autoflush(1);
+
+    $self->RegisterPrefix("newconnection",&ConstXMLNS("stream"),"stream");
 
     #---------------------------------------------------------------------------
     # Create the XML::Stream::Parser and register our callbacks
@@ -1268,6 +1263,126 @@ sub OpenFile
     delete($self->{SIDS}->{newconnection});
 
     return $sid;
+}
+
+
+
+
+##############################################################################
+#+----------------------------------------------------------------------------
+#|
+#| Common Functions
+#|
+#+----------------------------------------------------------------------------
+##############################################################################
+
+##############################################################################
+#
+# Disconnect - sends the closing XML tag and shuts down the socket.
+#
+##############################################################################
+sub Disconnect
+{
+    my $self = shift;
+    my $sid = shift;
+
+    $self->Send($sid,"</stream:stream>");
+    close($self->{SIDS}->{$sid}->{sock})
+        if (($self->{SIDS}->{$sid}->{connectiontype} eq "tcpip") ||
+    ($self->{SIDS}->{$sid}->{connectiontype} eq "http"));
+    delete($self->{SOCKETS}->{$self->{SIDS}->{$sid}->{sock}});
+    foreach my $key (keys(%{$self->{SIDS}->{$sid}}))
+    {
+        delete($self->{SIDS}->{$sid}->{$key});
+    }
+    delete($self->{SIDS}->{$sid});
+}
+
+
+##############################################################################
+#
+# InitConnection - Initialize the connection data structure
+#
+##############################################################################
+sub InitConnection
+{
+    my $self = shift;
+    my $sid = shift;
+    my $serverid = shift;
+
+    #---------------------------------------------------------------------------
+    # Set the default STATUS so that we can keep track of it throughout the
+    # session.
+    #   1 = no errors
+    #   0 = no data has been received yet
+    #  -1 = error from handlers
+    #  -2 = error but keep the connection alive so that we can send some info.
+    #---------------------------------------------------------------------------
+    $self->{SIDS}->{$sid}->{status} = 0;
+
+    #---------------------------------------------------------------------------
+    # A storage place for when we don't have a callback registered and we need
+    # to stockpile the nodes we receive until Process is called and we return
+    # them.
+    #---------------------------------------------------------------------------
+    $self->{SIDS}->{$sid}->{nodes} = ();
+
+    #---------------------------------------------------------------------------
+    # If there is an error on the stream, then we need a place to indicate that.
+    #---------------------------------------------------------------------------
+    $self->{SIDS}->{$sid}->{streamerror} = {};
+
+    #---------------------------------------------------------------------------
+    # Grab the init time so that we can keep the connection alive by sending " "
+    #---------------------------------------------------------------------------
+    $self->{SIDS}->{$sid}->{keepalive} = time;
+
+    #---------------------------------------------------------------------------
+    # Keep track of the "server" we are connected to so we can check stuff
+    # later.
+    #---------------------------------------------------------------------------
+    $self->{SIDS}->{$sid}->{serverid} = $serverid;
+
+    #---------------------------------------------------------------------------
+    # Mark the stream:features as MIA.
+    #---------------------------------------------------------------------------
+    $self->{SIDS}->{$sid}->{streamfeatures}->{received} = 0;
+    
+    #---------------------------------------------------------------------------
+    # First acitivty is the connection... duh. =)
+    #---------------------------------------------------------------------------
+    $self->MarkActivity($sid);
+}
+
+
+##############################################################################
+#
+# ParseStream - takes the incoming stream and makes sure that only full
+#               XML tags gets passed to the parser.  If a full tag has not
+#               read yet, then the Stream saves the incomplete part and
+#               sends the rest to the parser.
+#
+##############################################################################
+sub ParseStream
+{
+    my $self = shift;
+    my $sid = shift;
+    my $stream = shift;
+
+    $stream = "" unless defined($stream);
+
+    $self->debug(3,"ParseStream: sid($sid) stream($stream)");
+
+    $self->{SIDS}->{$sid}->{parser}->parse($stream);
+
+    if (exists($self->{SIDS}->{$sid}->{streamerror}->{type}))
+    {
+        $self->debug(3,"ParseStream: ERROR($self->{SIDS}->{$sid}->{streamerror}->{type})");
+        $self->SetErrorCode($sid,$self->{SIDS}->{$sid}->{streamerror});
+        return 0;
+    }
+
+    return 1;
 }
 
 
@@ -1464,7 +1579,7 @@ sub Process
     #---------------------------------------------------------------------------
     foreach my $sid (keys(%status))
     {
-        $status{$sid} = shift @{$self->{SIDS}->{$sid}->{nodes}}
+        $status{$sid} = $self->{SIDS}->{$sid}->{nodes}
             if (($status{$sid} == 1) &&
                 ($#{$self->{SIDS}->{$sid}->{nodes}} > -1));
     }
@@ -1475,160 +1590,47 @@ sub Process
 
 ##############################################################################
 #
-# ParseStream - takes the incoming stream and makes sure that only full
-#               XML tags gets passed to the parser.  If a full tag has not
-#               read yet, then the Stream saves the incomplete part and
-#               sends the rest to the parser.
+# Read - Takes the data from the server and returns a string
 #
 ##############################################################################
-sub ParseStream
+sub Read
 {
     my $self = shift;
     my $sid = shift;
-    my $stream = shift;
+    my $buff;
+    my $status = 1;
 
-    $stream = "" unless defined($stream);
+    $self->debug(3,"Read: sid($sid)");
+    $self->debug(3,"Read: connectionType($self->{SIDS}->{$sid}->{connectiontype})");
+    $self->debug(3,"Read: socket($self->{SIDS}->{$sid}->{sock})");
 
-    $self->debug(3,"ParseStream: sid($sid) stream($stream)");
+    return if ($self->{SIDS}->{$sid}->{status} == -1);
 
-    $self->{SIDS}->{$sid}->{parser}->parse($stream);
-
-    if (defined($self->{SIDS}->{$sid}->{streamerror}) &&
-            ($self->{SIDS}->{$sid}->{streamerror} ne ""))
+    if (!defined($self->{SIDS}->{$sid}->{sock}))
     {
-        $self->debug(3,"ParseStream: ERROR($self->{SIDS}->{$sid}->{streamerror})");
-        $self->SetErrorCode($sid,$self->{SIDS}->{$sid}->{streamerror});
-        return 0;
+        $self->{SIDS}->{$sid}->{status} = -1;
+        $self->SetErrorCode($sid,"Socket does not defined.");
+        return;
     }
 
-    return 1;
-}
+    $self->{SIDS}->{$sid}->{sock}->flush();
 
+    $status = $self->{SIDS}->{$sid}->{sock}->sysread($buff,4*POSIX::BUFSIZ)
+        if (($self->{SIDS}->{$sid}->{connectiontype} eq "tcpip") ||
+    ($self->{SIDS}->{$sid}->{connectiontype} eq "http") ||
+    ($self->{SIDS}->{$sid}->{connectiontype} eq "file"));
+    $status = sysread(STDIN,$buff,1024)
+        if ($self->{SIDS}->{$sid}->{connectiontype} eq "stdinout");
 
-##############################################################################
-#
-# NewSID - returns a session ID to send to an incoming stream in the return
-#          header.  By default it just increments a counter and returns that,
-#          or you can define a function and set it using the SetCallBacks
-#          function.
-#
-##############################################################################
-sub NewSID
-{
-    my $self = shift;
-    return &{$self->{CB}->{sid}}() if (exists($self->{CB}->{sid}) &&
-                       defined($self->{CB}->{sid}));
-    return $$.time.$self->{IDCOUNT}++;
-}
-
-
-###########################################################################
-#
-# SetCallBacks - Takes a hash with top level tags to look for as the keys
-#                and pointers to functions as the values.
-#
-###########################################################################
-sub SetCallBacks
-{
-    my $self = shift;
-    while($#_ >= 0) {
-        my $func = pop(@_);
-        my $tag = pop(@_);
-        if (($tag eq "node") && !defined($func))
-        {
-            $self->SetCallBacks(node=>sub { $self->_node(@_) });
-        }
-        else
-        {
-            $self->debug(1,"SetCallBacks: tag($tag) func($func)");
-            $self->{CB}->{$tag} = $func;
-        }
-    }
-}
-
-
-##############################################################################
-#
-# GetRoot - returns the hash of attributes for the root <stream:stream/> tag
-#           so that any attributes returned can be accessed.  from and any
-#           xmlns:foobar might be important.
-#
-##############################################################################
-sub GetRoot
-{
-    my $self = shift;
-    my $sid = shift;
-    return unless exists($self->{SIDS}->{$sid}->{root});
-    return $self->{SIDS}->{$sid}->{root};
-}
-
-
-##############################################################################
-#
-# GetSock - returns the Socket so that an outside function can access it if
-#           desired.
-#
-##############################################################################
-sub GetSock
-{
-    my $self = shift;
-    my $sid = shift;
-    return $self->{SIDS}->{$sid}->{sock};
-}
-
-
-##############################################################################
-#
-# IgnoreActivity - Takes the data string and sends it to the server
-#
-##############################################################################
-sub IgnoreActivity
-{
-    my $self = shift;
-    my $sid = shift;
-    my $ignoreActivity = shift;
-    $ignoreActivity = 1 unless defined($ignoreActivity);
-
-    $self->debug(3,"IgnoreActivity: ignoreActivity($ignoreActivity)");
-    $self->debug(4,"IgnoreActivity: sid($sid)");
-
-    $self->{SIDS}->{$sid}->{ignoreActivity} = $ignoreActivity;
-}
-
-
-##############################################################################
-#
-# LastActivity - Takes the data string and sends it to the server
-#
-##############################################################################
-sub LastActivity
-{
-    my $self = shift;
-    my $sid = shift;
-
-    $self->debug(3,"LastActivity: sid($sid)");
-    $self->debug(1,"LastActivity: lastActivity($self->{SIDS}->{$sid}->{lastActivity})");
-
-    return $self->{SIDS}->{$sid}->{lastActivity};
-}
-
-
-##############################################################################
-#
-# MarkActivity - Record the current time for this sid.
-#
-##############################################################################
-sub MarkActivity
-{
-    my $self = shift;
-    my $sid = shift;
-
-    return if (exists($self->{SIDS}->{$sid}->{ignoreActivity}) &&
-               ($self->{SIDS}->{$sid}->{ignoreActivity} == 1));
-
-    $self->debug(3,"MarkActivity: sid($sid)");
-
-    $self->{SIDS}->{$sid}->{lastActivity} = time;
+    $buff =~ s/^HTTP[\S\s]+\n\n// if ($self->{SIDS}->{$sid}->{connectiontype} eq "http");
+    $self->debug(1,"Read: buff($buff)");
+    $self->debug(3,"Read: status($status)") if defined($status);
+    $self->debug(3,"Read: status(undef)") unless defined($status);
+    $self->{SIDS}->{$sid}->{keepalive} = time
+        unless (($buff eq "") || !defined($status) || ($status == 0));
+    return $buff unless (!defined($status) || ($status == 0));
+    $self->debug(1,"Read: ERROR");
+    return;
 }
 
 
@@ -1708,85 +1710,554 @@ sub Send
 }
 
 
+
+
+##############################################################################
+#+----------------------------------------------------------------------------
+#|
+#| Feature Functions
+#|
+#+----------------------------------------------------------------------------
+##############################################################################
+
 ##############################################################################
 #
-# Read - Takes the data from the server and returns a string
+# ProcessStreamFeatures - process the <stream:featutres/> block.
 #
 ##############################################################################
-sub Read
+sub ProcessStreamFeatures
 {
     my $self = shift;
     my $sid = shift;
-    my $buff;
-    my $status = 1;
+    my $node = shift;
 
-    $self->debug(3,"Read: sid($sid)");
-    $self->debug(3,"Read: connectionType($self->{SIDS}->{$sid}->{connectiontype})");
-    $self->debug(3,"Read: socket($self->{SIDS}->{$sid}->{sock})");
+    $self->{SIDS}->{$sid}->{streamfeatures}->{received} = 1;
 
-    return if ($self->{SIDS}->{$sid}->{status} == -1);
-
-    if (!defined($self->{SIDS}->{$sid}->{sock}))
+    #-------------------------------------------------------------------------
+    # SASL - 1.0
+    #-------------------------------------------------------------------------
+    my @sasl = &XPath($node,'*[@xmlns="'.&ConstXMLNS('xmpp-sasl').'"]');
+    if ($#sasl > -1)
     {
-        $self->{SIDS}->{$sid}->{status} = -1;
-        $self->SetErrorCode($sid,"Socket does not defined.");
+        if (&XPath($sasl[0],"name()") eq "mechanisms")
+        {
+            my @mechanisms = &XPath($sasl[0],"mechanism/text()");
+            $self->{SIDS}->{$sid}->{streamfeatures}->{'xmpp-sasl'} = \@mechanisms;
+        }
+    }
+    
+    #-------------------------------------------------------------------------
+    # XMPP-TLS - 1.0
+    #-------------------------------------------------------------------------
+    my @tls = &XPath($node,'*[@xmlns="'.&ConstXMLNS('xmpp-tls').'"]');
+    if ($#tls > -1)
+    {
+        if (&XPath($tls[0],"name()") eq "starttls")
+        {
+            $self->{SIDS}->{$sid}->{streamfeatures}->{'xmpp-tls'} = 1;
+            my @required = &XPath($tls[0],"required");
+            if ($#required > -1)
+            {
+                $self->{SIDS}->{$sid}->{streamfeatures}->{'xmpp-tls'} = "required";
+            }
+        }
+    }
+    
+    #-------------------------------------------------------------------------
+    # XMPP-Bind - 1.0
+    #-------------------------------------------------------------------------
+    my @bind = &XPath($node,'*[@xmlns="'.&ConstXMLNS('xmpp-bind').'"]');
+    if ($#bind > -1)
+    {
+        $self->{SIDS}->{$sid}->{streamfeatures}->{'xmpp-bind'} = 1;
+    }
+    
+    #-------------------------------------------------------------------------
+    # XMPP-Session - 1.0
+    #-------------------------------------------------------------------------
+    my @session = &XPath($node,'*[@xmlns="'.&ConstXMLNS('xmpp-session').'"]');
+    if ($#session > -1)
+    {
+        $self->{SIDS}->{$sid}->{streamfeatures}->{'xmpp-session'} = 1;
+    }
+    
+}
+
+
+##############################################################################
+#
+# GetStreamFeature - Return the value of the stream feature (if any).
+#
+##############################################################################
+sub GetStreamFeature
+{
+    my $self = shift;
+    my $sid = shift;
+    my $feature = shift;
+
+    return unless exists($self->{SIDS}->{$sid}->{streamfeatures}->{$feature});
+    return $self->{SIDS}->{$sid}->{streamfeatures}->{$feature};
+}
+
+
+##############################################################################
+#
+# ReceivedStreamFeatures - Have we received the stream:features yet?
+#
+##############################################################################
+sub ReceivedStreamFeatures
+{
+    my $self = shift;
+    my $sid = shift;
+    my $feature = shift;
+
+    return $self->{SIDS}->{$sid}->{streamfeatures}->{received};
+}
+
+
+
+
+##############################################################################
+#+----------------------------------------------------------------------------
+#|
+#| TLS Functions
+#|
+#+----------------------------------------------------------------------------
+##############################################################################
+
+##############################################################################
+#
+# ProcessTLSPacket - process a TLS based packet.
+#
+##############################################################################
+sub ProcessTLSPacket
+{
+    my $self = shift;
+    my $sid = shift;
+    my $node = shift;
+
+    my $tag = &XPath($node,"name()");
+
+    if ($tag eq "failure")
+    {
+        $self->TLSClientFailure($sid,$node);
+    }
+    
+    if ($tag eq "proceed")
+    {
+        $self->TLSClientProceed($sid,$node);
+    }
+}
+
+
+##############################################################################
+#
+# StartTLS - client function to have the socket start TLS.
+#
+##############################################################################
+sub StartTLS
+{
+    my $self = shift;
+    my $sid = shift;
+    my $timeout = shift;
+    $timeout = 120 unless defined($timeout);
+    $timeout = 120 if ($timeout eq "");
+    
+    $self->TLSStartTLS($sid);
+
+    my $endTime = time + $timeout;
+    while(!$self->TLSClientDone($sid) && ($endTime >= time))
+    {
+        $self->Process($sid);
+    }
+
+    if (!$self->TLSClientSecure($sid))
+    {
         return;
     }
 
-    $self->{SIDS}->{$sid}->{sock}->flush();
-
-    $status = $self->{SIDS}->{$sid}->{sock}->sysread($buff,4*POSIX::BUFSIZ)
-        if (($self->{SIDS}->{$sid}->{connectiontype} eq "tcpip") ||
-    ($self->{SIDS}->{$sid}->{connectiontype} eq "http") ||
-    ($self->{SIDS}->{$sid}->{connectiontype} eq "file"));
-    $status = sysread(STDIN,$buff,1024)
-        if ($self->{SIDS}->{$sid}->{connectiontype} eq "stdinout");
-
-    $buff =~ s/^HTTP[\S\s]+\n\n// if ($self->{SIDS}->{$sid}->{connectiontype} eq "http");
-    $self->debug(1,"Read: buff($buff)");
-    $self->debug(3,"Read: status($status)") if defined($status);
-    $self->debug(3,"Read: status(undef)") unless defined($status);
-    $self->{SIDS}->{$sid}->{keepalive} = time
-        unless (($buff eq "") || !defined($status) || ($status == 0));
-    return $buff unless (!defined($status) || ($status == 0));
-    $self->debug(1,"Read: ERROR");
-    return;
+    return $self->OpenStream($sid,$timeout);
 }
 
 
 ##############################################################################
 #
-# GetErrorCode - if you are returned an undef, you can call this function
-#                and hopefully learn more information about the problem.
+# TLSStartTLS - send a <starttls/> in the TLS namespace.
 #
 ##############################################################################
-sub GetErrorCode
+sub TLSStartTLS
 {
     my $self = shift;
     my $sid = shift;
 
-    $sid = "newconnection" unless defined($sid);
-
-    $self->debug(3,"GetErrorCode: sid($sid)");
-    return ((exists($self->{SIDS}->{$sid}->{errorcode}) &&
-             ($self->{SIDS}->{$sid}->{errorcode} ne "")) ?
-            $self->{SIDS}->{$sid}->{errorcode} :
-            $!);
+    $self->Send($sid,"<starttls xmlns='".&ConstXMLNS('xmpp-tls')."'/>");
 }
 
 
 ##############################################################################
 #
-# SetErrorCode - sets the error code so that the caller can find out more
-#                information about the problem
+# TLSClientProceed - handle a <proceed/> packet.
 #
 ##############################################################################
-sub SetErrorCode
+sub TLSClientProceed
 {
     my $self = shift;
     my $sid = shift;
-    my ($errorcode) = @_;
-    $self->{SIDS}->{$sid}->{errorcode} = $errorcode;
+    my $node = shift;
+
+    $self->debug(1,"TLSClientProceed: Convert normal socket to SSL");
+    $self->debug(1,"TLSClientProceed: sock($self->{SIDS}->{newconnection}->{sock})");
+    if (!$self->LoadSSL())
+    {
+        $self->{SIDS}->{$sid}->{tls}->{error} = "Could not load IO::Socket::SSL.";
+        $self->{SIDS}->{$sid}->{tls}->{done} = 1;
+        return;
+    }
+    
+    IO::Socket::SSL->start_SSL($self->{SIDS}->{$sid}->{sock},{SSL_verify_mode=>0x00});
+
+    $self->debug(1,"TLSClientProceed: ssl_sock($self->{SIDS}->{$sid}->{sock})");
+    $self->debug(1,"TLSClientProceed: SSL: We are secure")
+        if ($self->{SIDS}->{$sid}->{sock});
+    
+    $self->{SIDS}->{$sid}->{tls}->{done} = 1;
+    $self->{SIDS}->{$sid}->{tls}->{secure} = 1;
+}
+
+
+##############################################################################
+#
+# TLSClientSecure - return 1 if the socket is secure, 0 otherwise.
+#
+##############################################################################
+sub TLSClientSecure
+{
+    my $self = shift;
+    my $sid = shift;
+    
+    return $self->{SIDS}->{$sid}->{tls}->{secure};
+}
+
+
+##############################################################################
+#
+# TLSClientDone - return 1 if the TLS process is done
+#
+##############################################################################
+sub TLSClientDone
+{
+    my $self = shift;
+    my $sid = shift;
+    
+    return $self->{SIDS}->{$sid}->{tls}->{done};
+}
+
+
+##############################################################################
+#
+# TLSClientError - return the TLS error if any
+#
+##############################################################################
+sub TLSClientError
+{
+    my $self = shift;
+    my $sid = shift;
+    
+    return $self->{SIDS}->{$sid}->{tls}->{error};
+}
+
+
+##############################################################################
+#
+# TLSClientFailure - handle a <failure/>
+#
+##############################################################################
+sub TLSClientFailure
+{
+    my $self = shift;
+    my $sid = shift;
+    my $node = shift;
+    
+    my $type = &XPath($node,"*/name()");
+
+    $self->{SIDS}->{$sid}->{tls}->{error} = $type;
+    $self->{SIDS}->{$sid}->{tls}->{done} = 1;
+}
+
+
+##############################################################################
+#
+# TLSFailure - Send a <failure/> in the TLS namespace
+#
+##############################################################################
+sub TLSFailure
+{
+    my $self = shift;
+    my $sid = shift;
+    my $type = shift;
+    
+    $self->Send($sid,"<failure xmlns='".&ConstXMLNS('xmpp-tls')."'><${type}/></failure>");
+}
+
+
+
+
+##############################################################################
+#+----------------------------------------------------------------------------
+#|
+#| SASL Functions
+#|
+#+----------------------------------------------------------------------------
+##############################################################################
+
+##############################################################################
+#
+# ProcessSASLPacket - process a SASL based packet.
+#
+##############################################################################
+sub ProcessSASLPacket
+{
+    my $self = shift;
+    my $sid = shift;
+    my $node = shift;
+
+    my $tag = &XPath($node,"name()");
+
+    if ($tag eq "challenge")
+    {
+        $self->SASLAnswerChallenge($sid,$node);
+    }
+    
+    if ($tag eq "failure")
+    {
+        $self->SASLClientFailure($sid,$node);
+    }
+    
+    if ($tag eq "success")
+    {
+        $self->SASLClientSuccess($sid,$node);
+    }
+}
+
+
+##############################################################################
+#
+# SASLAnswerChallenge - when we get a <challenge/> we need to do the grunt
+#                       work to return a <response/>.
+#
+##############################################################################
+sub SASLAnswerChallenge
+{
+    my $self = shift;
+    my $sid = shift;
+    my $node = shift;
+
+    my $challenge64 = &XPath($node,"text()");
+    my $challenge = MIME::Base64::decode_base64($challenge64);
+    
+    my $response = $self->{SIDS}->{$sid}->{sasl}->{client}->client_step($challenge);
+
+    my $response64 = MIME::Base64::encode_base64($response,"");
+    $self->SASLResponse($sid,$response64);
+}
+
+
+##############################################################################
+#
+# SASLAuth - send an <auth/> in the SASL namespace
+#
+##############################################################################
+sub SASLAuth
+{
+    my $self = shift;
+    my $sid = shift;
+
+    $self->Send($sid,"<auth xmlns='".&ConstXMLNS('xmpp-sasl')."' mechanism='".$self->{SIDS}->{$sid}->{sasl}->{client}->mechanism()."'/>");
+}
+
+
+##############################################################################
+#
+# SASLChallenge - Send a <challenge/> in the SASL namespace
+#
+##############################################################################
+sub SASLChallenge
+{
+    my $self = shift;
+    my $sid = shift;
+    my $challenge = shift;
+
+    $self->Send($sid,"<challenge xmlns='".&ConstXMLNS('xmpp-sasl')."'>${challenge}</challenge>");
+}
+
+
+###############################################################################
+#
+# SASLClient - This is a helper function to perform all of the required steps
+#              for doing SASL with the server.
+#
+###############################################################################
+sub SASLClient
+{
+    my $self = shift;
+    my $sid = shift;
+    my $username = shift;
+    my $password = shift;
+
+    my $mechanisms = $self->GetStreamFeature($sid,"xmpp-sasl");
+
+    return unless defined($mechanisms);
+    
+    my $sasl = new Authen::SASL(mechanism=>join(" ",@{$mechanisms}),
+                                callback=>{ user => $username,
+                                            pass => $password
+                                          }
+                               );
+
+    $self->{SIDS}->{$sid}->{sasl}->{client} = $sasl->client_new();
+    $self->{SIDS}->{$sid}->{sasl}->{username} = $username;
+    $self->{SIDS}->{$sid}->{sasl}->{password} = $password;
+    $self->{SIDS}->{$sid}->{sasl}->{authed} = 0;
+    $self->{SIDS}->{$sid}->{sasl}->{done} = 0;
+
+    $self->SASLAuth($sid);
+}
+
+
+##############################################################################
+#
+# SASLClientAuthed - return 1 if we authed via SASL, 0 otherwise
+#
+##############################################################################
+sub SASLClientAuthed
+{
+    my $self = shift;
+    my $sid = shift;
+    
+    return $self->{SIDS}->{$sid}->{sasl}->{authed};
+}
+
+
+##############################################################################
+#
+# SASLClientDone - return 1 if the SASL process is finished
+#
+##############################################################################
+sub SASLClientDone
+{
+    my $self = shift;
+    my $sid = shift;
+    
+    return $self->{SIDS}->{$sid}->{sasl}->{done};
+}
+
+
+##############################################################################
+#
+# SASLClientError - return the error if any
+#
+##############################################################################
+sub SASLClientError
+{
+    my $self = shift;
+    my $sid = shift;
+    
+    return $self->{SIDS}->{$sid}->{sasl}->{error};
+}
+
+
+##############################################################################
+#
+# SASLClientFailure - handle a received <failure/>
+#
+##############################################################################
+sub SASLClientFailure
+{
+    my $self = shift;
+    my $sid = shift;
+    my $node = shift;
+    
+    my $type = &XPath($node,"*/name()");
+
+    $self->{SIDS}->{$sid}->{sasl}->{error} = $type;
+    $self->{SIDS}->{$sid}->{sasl}->{done} = 1;
+}
+
+
+##############################################################################
+#
+# SASLClientSuccess - handle a received <success/>
+#
+##############################################################################
+sub SASLClientSuccess
+{
+    my $self = shift;
+    my $sid = shift;
+    my $node = shift;
+    
+    $self->{SIDS}->{$sid}->{sasl}->{authed} = 1;
+    $self->{SIDS}->{$sid}->{sasl}->{done} = 1;
+}
+
+
+##############################################################################
+#
+# SASLFailure - Send a <failure/> tag in the SASL namespace
+#
+##############################################################################
+sub SASLFailure
+{
+    my $self = shift;
+    my $sid = shift;
+    my $type = shift;
+    
+    $self->Send($sid,"<failure xmlns='".&ConstXMLNS('xmpp-sasl')."'><${type}/></failure>");
+}
+
+
+##############################################################################
+#
+# SASLResponse - Send a <response/> tag in the SASL namespace
+#
+##############################################################################
+sub SASLResponse
+{
+    my $self = shift;
+    my $sid = shift;
+    my $response = shift;
+
+    $self->Send($sid,"<response xmlns='".&ConstXMLNS('xmpp-sasl')."'>${response}</response>");
+}
+
+
+
+
+##############################################################################
+#+----------------------------------------------------------------------------
+#|
+#| Packet Handlers
+#|
+#+----------------------------------------------------------------------------
+##############################################################################
+
+
+##############################################################################
+#
+# ProcessStreamPacket - process the <stream:XXXX/> packet
+#
+##############################################################################
+sub ProcessStreamPacket
+{
+    my $self = shift;
+    my $sid = shift;
+    my $node = shift;
+
+    my $tag = &XPath($node,"name()");
+    my $stream_prefix = $self->StreamPrefix($sid);
+    my ($type) = ($tag =~ /^${stream_prefix}\:(.+)$/);
+
+    $self->ProcessStreamError($sid,$node) if ($type eq "error");
+    $self->ProcessStreamFeatures($sid,$node) if ($type eq "features");
 }
 
 
@@ -1811,9 +2282,11 @@ sub _handle_root
 
     if ($self->{SIDS}->{$sid}->{connectiontype} ne "file")
     {
-        #-------------------------------------------------------------------------
+        #---------------------------------------------------------------------
         # Make sure we are receiving a valid stream on the same namespace.
-        #-------------------------------------------------------------------------
+        #---------------------------------------------------------------------
+        
+        $self->debug(3,"_handle_root: ($self->{SIDS}->{$self->{SIDS}->{$sid}->{serverid}}->{namespace})");
         $self->{SIDS}->{$sid}->{status} =
             ((($tag eq "stream:stream") &&
                exists($att{'xmlns'}) &&
@@ -1822,25 +2295,43 @@ sub _handle_root
               1 :
               -1
             );
+        $self->debug(3,"_handle_root: status($self->{SIDS}->{$sid}->{status})");
     }
     else
     {
         $self->{SIDS}->{$sid}->{status} = 1;
     }
 
-    #---------------------------------------------------------------------------
+    #-------------------------------------------------------------------------
     # Get the root tag attributes and save them for later.  You never know when
     # you'll need to check the namespace or the from attributes sent by the
     # server.
-    #---------------------------------------------------------------------------
+    #-------------------------------------------------------------------------
     $self->{SIDS}->{$sid}->{root} = \%att;
 
-    #---------------------------------------------------------------------------
+    #-------------------------------------------------------------------------
+    # Run through the various xmlns:*** attributes and register the namespace
+    # to prefix map.
+    #-------------------------------------------------------------------------
+    foreach my $key (keys(%att))
+    {
+        if ($key =~ /^xmlns\:(.+?)$/)
+        {
+            $self->debug(5,"_handle_root: RegisterPrefix: prefix($att{$key}) ns($1)");
+            $self->RegisterPrefix($sid,$att{$key},$1);
+        }
+    }
+    
+    #-------------------------------------------------------------------------
     # Sometimes we will get an error, so let's parse the tag assuming that we
     # got a stream:error
-    #---------------------------------------------------------------------------
-    if ($tag eq "stream:error")
+    #-------------------------------------------------------------------------
+    my $stream_prefix = $self->StreamPrefix($sid);
+    $self->debug(5,"_handle_root: stream_prefix($stream_prefix)");
+    
+    if ($tag eq $stream_prefix.":error")
     {
+        print "\n**************************\n\n";
         &XML::Stream::Tree::_handle_element($self,$sax,$tag,%att)
             if ($self->{DATASTYLE} eq "tree");
         &XML::Stream::Node::_handle_element($self,$sax,$tag,%att)
@@ -1868,10 +2359,234 @@ sub _node
 {
     my $self = shift;
     my $sid = shift;
-    my @PassedNode = @_;
-    push(@{$self->{SIDS}->{$sid}->{nodes}},\@PassedNode);
+    my @node = shift;
+
+    if (ref($node[0]) eq "XML::Stream::Node")
+    {
+        push(@{$self->{SIDS}->{$sid}->{nodes}},$node[0]);
+    }
+    else
+    {
+        push(@{$self->{SIDS}->{$sid}->{nodes}},\@node);
+    }
 }
 
+
+
+
+##############################################################################
+#+----------------------------------------------------------------------------
+#|
+#| Error Functions
+#|
+#+----------------------------------------------------------------------------
+##############################################################################
+
+##############################################################################
+#
+# GetErrorCode - if you are returned an undef, you can call this function
+#                and hopefully learn more information about the problem.
+#
+##############################################################################
+sub GetErrorCode
+{
+    my $self = shift;
+    my $sid = shift;
+
+    $sid = "newconnection" unless defined($sid);
+
+    $self->debug(3,"GetErrorCode: sid($sid)");
+    return ((exists($self->{SIDS}->{$sid}->{errorcode}) &&
+             (ref($self->{SIDS}->{$sid}->{errorcode}) eq "HASH")) ?
+            $self->{SIDS}->{$sid}->{errorcode} :
+            { type=>"system",
+              text=>$!,
+            }
+           );
+}
+
+
+##############################################################################
+#
+# SetErrorCode - sets the error code so that the caller can find out more
+#                information about the problem
+#
+##############################################################################
+sub SetErrorCode
+{
+    my $self = shift;
+    my $sid = shift;
+    my $errorcode = shift;
+
+    $self->{SIDS}->{$sid}->{errorcode} = $errorcode;
+}
+
+
+##############################################################################
+#
+# ProcessStreamError - Take the XML packet and extract out the error.
+#
+##############################################################################
+sub ProcessStreamError
+{
+    my $self = shift;
+    my $sid = shift;
+    my $node = shift;
+
+    $self->{SIDS}->{$sid}->{streamerror}->{type} = "unknown";
+    $self->{SIDS}->{$sid}->{streamerror}->{node} = $node;
+    
+    #-------------------------------------------------------------------------
+    # Check for older 0.9 streams and handle the errors for them.
+    #-------------------------------------------------------------------------
+    if (!exists($self->{SIDS}->{$sid}->{root}->{version}) ||
+        ($self->{SIDS}->{$sid}->{root}->{version} eq "") ||
+        ($self->{SIDS}->{$sid}->{root}->{version} < 1.0)
+       )
+    {
+        $self->{SIDS}->{$sid}->{streamerror}->{text} =
+            &XPath($node,"text()");
+        return;
+    }
+
+    #-------------------------------------------------------------------------
+    # Otherwise we are in XMPP land with real stream errors.
+    #-------------------------------------------------------------------------
+    my @errors = &XPath($node,'*[@xmlns="'.&ConstXMLNS("xmppstreams").'"]');
+
+    my $type;
+    my $text;
+    foreach my $error (@errors)
+    {
+        if (&XPath($error,"name()") eq "text")
+        {
+            $self->{SIDS}->{$sid}->{streamerror}->{text} =
+                &XPath($error,"text()");
+        }
+        else
+        {
+            $self->{SIDS}->{$sid}->{streamerror}->{type} =
+                &XPath($error,"name()");
+        }
+    }
+}
+
+
+##############################################################################
+#
+# StreamError - Given a type and text, generate a <stream:error/> packet to
+#               send back to the other side.
+#
+##############################################################################
+sub StreamError
+{
+    my $self = shift;
+    my $sid = shift;
+    my $type = shift;
+    my $text = shift;
+
+    my $root = $self->GetRoot($sid);
+    my $stream_base = $self->StreamPrefix($sid);
+    my $error = "<${stream_base}:error>";
+
+    if (exists($root->{version}) && ($root->{version} ne ""))
+    {
+        $error .= "<${type} xmlns='".&ConstXMLNS('xmppstreams')."'/>";
+        if (defined($text))
+        {
+            $error .= "<text xmlns='".&ConstXMLNS('xmppstreams')."'>";
+            $error .= $text;
+            $error .= "</text>";
+        }
+    }
+    else
+    {
+        $error .= $text;
+    }
+
+    $error .= "</${stream_base}:error>";
+
+    return $error;
+}
+
+
+
+
+##############################################################################
+#+----------------------------------------------------------------------------
+#|
+#| Activity Monitoring Functions
+#|
+#+----------------------------------------------------------------------------
+##############################################################################
+
+##############################################################################
+#
+# IgnoreActivity - Set the flag that will ignore the activity monitor.
+#
+##############################################################################
+sub IgnoreActivity
+{
+    my $self = shift;
+    my $sid = shift;
+    my $ignoreActivity = shift;
+    $ignoreActivity = 1 unless defined($ignoreActivity);
+
+    $self->debug(3,"IgnoreActivity: ignoreActivity($ignoreActivity)");
+    $self->debug(4,"IgnoreActivity: sid($sid)");
+
+    $self->{SIDS}->{$sid}->{ignoreActivity} = $ignoreActivity;
+}
+
+
+##############################################################################
+#
+# LastActivity - Return the time of the last activity.
+#
+##############################################################################
+sub LastActivity
+{
+    my $self = shift;
+    my $sid = shift;
+
+    $self->debug(3,"LastActivity: sid($sid)");
+    $self->debug(1,"LastActivity: lastActivity($self->{SIDS}->{$sid}->{lastActivity})");
+
+    return $self->{SIDS}->{$sid}->{lastActivity};
+}
+
+
+##############################################################################
+#
+# MarkActivity - Record the current time for this sid.
+#
+##############################################################################
+sub MarkActivity
+{
+    my $self = shift;
+    my $sid = shift;
+
+    return if (exists($self->{SIDS}->{$sid}->{ignoreActivity}) &&
+               ($self->{SIDS}->{$sid}->{ignoreActivity} == 1));
+
+    $self->debug(3,"MarkActivity: sid($sid)");
+
+    $self->{SIDS}->{$sid}->{lastActivity} = time;
+}
+
+
+
+
+##############################################################################
+#+----------------------------------------------------------------------------
+#|
+#| XML Node Interface functions
+#|
+#|   These are generic wrappers around the Tree and Node data types.  The
+#| problem being that the Tree class cannot support methods.
+#|
+#+----------------------------------------------------------------------------
+##############################################################################
 
 ##############################################################################
 #
@@ -1987,7 +2702,6 @@ sub XPathCheck
     my $result = $query->execute($tree);
     return $result->check();
 }
-
 
 
 ##############################################################################
@@ -2154,6 +2868,113 @@ sub BuildXML
 }
 
 
+
+##############################################################################
+#+----------------------------------------------------------------------------
+#|
+#| Namespace/Prefix Functions
+#|
+#+----------------------------------------------------------------------------
+##############################################################################
+
+##############################################################################
+#
+# ConstXMLNS - Return the namespace from the constant string.
+#
+##############################################################################
+sub ConstXMLNS
+{
+    my $const = shift;
+    
+    return $XMLNS{$const};
+}
+
+
+##############################################################################
+#
+# StreamPrefix - Return the prefix of the <stream:stream/>
+#
+##############################################################################
+sub StreamPrefix
+{
+    my $self = shift;
+    my $sid = shift;
+    
+    return $self->ns2prefix($sid,&ConstXMLNS("stream"));
+}
+
+
+##############################################################################
+#
+# RegisterPrefix - setup the map for namespace to prefix
+#
+##############################################################################
+sub RegisterPrefix
+{
+    my $self = shift;
+    my $sid = shift;
+    my $ns = shift;
+    my $prefix = shift;
+
+    $self->{SIDS}->{$sid}->{ns2prefix}->{$ns} = $prefix;
+}
+
+
+##############################################################################
+#
+# ns2prefix - for a stream, return the prefix for the given namespace
+#
+##############################################################################
+sub ns2prefix
+{
+    my $self = shift;
+    my $sid = shift;
+    my $ns = shift;
+
+    return $self->{SIDS}->{$sid}->{ns2prefix}->{$ns};
+}
+
+
+
+
+##############################################################################
+#+----------------------------------------------------------------------------
+#|
+#| Helper Functions
+#|
+#+----------------------------------------------------------------------------
+##############################################################################
+
+##############################################################################
+#
+# GetRoot - returns the hash of attributes for the root <stream:stream/> tag
+#           so that any attributes returned can be accessed.  from and any
+#           xmlns:foobar might be important.
+#
+##############################################################################
+sub GetRoot
+{
+    my $self = shift;
+    my $sid = shift;
+    return unless exists($self->{SIDS}->{$sid}->{root});
+    return $self->{SIDS}->{$sid}->{root};
+}
+
+
+##############################################################################
+#
+# GetSock - returns the Socket so that an outside function can access it if
+#           desired.
+#
+##############################################################################
+sub GetSock
+{
+    my $self = shift;
+    my $sid = shift;
+    return $self->{SIDS}->{$sid}->{sock};
+}
+
+
 ##############################################################################
 #
 # LoadSSL - simple call to set everything up for SSL one time.
@@ -2161,17 +2982,180 @@ sub BuildXML
 ##############################################################################
 sub LoadSSL
 {
-    if (!defined($SSL))
+    my $self = shift;
+
+    $self->debug(1,"LoadSSL: Load the IO::Socket::SSL module");
+    
+    if (defined($SSL) && ($SSL == 1))
     {
-        my $SSL_Version = "0.81";
-        eval "use IO::Socket::SSL $SSL_Version";
-        if ($@)
-        {
-            croak("You requested that XML::Stream turn the socket into an SSL socket, but you don't have the correct version of IO::Socket::SSL v$SSL_Version.");
-        }
-        IO::Socket::SSL::context_init({SSL_verify_mode=>0x00});
-        $SSL = 1;
+        $self->debug(1,"LoadSSL: Success");
+        return 1;
     }
+    
+    if (defined($SSL) && ($SSL == 0))
+    {
+        $self->debug(1,"LoadSSL: Failure");
+        return;
+    }
+
+    my $SSL_Version = "0.81";
+    eval "use IO::Socket::SSL $SSL_Version";
+    if ($@)
+    {
+        croak("You requested that XML::Stream turn the socket into an SSL socket, but you don't have the correct version of IO::Socket::SSL v$SSL_Version.");
+    }
+    IO::Socket::SSL::context_init({SSL_verify_mode=>0x00});
+    $SSL = 1;
+
+    $self->debug(1,"LoadSSL: Success");
+    return 1;
+}
+
+
+##############################################################################
+#
+# Host2SID - For a server this allows you to lookup the SID of a stream server
+#            based on the hostname that is is listening on.
+#
+##############################################################################
+sub Host2SID
+{
+    my $self = shift;
+    my $hostname = shift;
+
+    foreach my $sid (keys(%{$self->{SIDS}}))
+    {
+        next if ($sid eq "default");
+        next if ($sid =~ /^server/);
+
+        return $sid if ($self->{SIDS}->{$sid}->{hostname} eq $hostname);
+    }
+    return;
+}
+
+
+##############################################################################
+#
+# NewSID - returns a session ID to send to an incoming stream in the return
+#          header.  By default it just increments a counter and returns that,
+#          or you can define a function and set it using the SetCallBacks
+#          function.
+#
+##############################################################################
+sub NewSID
+{
+    my $self = shift;
+    return &{$self->{CB}->{sid}}() if (exists($self->{CB}->{sid}) &&
+                       defined($self->{CB}->{sid}));
+    return $$.time.$self->{IDCOUNT}++;
+}
+
+
+###########################################################################
+#
+# SetCallBacks - Takes a hash with top level tags to look for as the keys
+#                and pointers to functions as the values.
+#
+###########################################################################
+sub SetCallBacks
+{
+    my $self = shift;
+    while($#_ >= 0) {
+        my $func = pop(@_);
+        my $tag = pop(@_);
+        if (($tag eq "node") && !defined($func))
+        {
+            $self->SetCallBacks(node=>sub { $self->_node(@_) });
+        }
+        else
+        {
+            $self->debug(1,"SetCallBacks: tag($tag) func($func)");
+            $self->{CB}->{$tag} = $func;
+        }
+    }
+}
+
+
+##############################################################################
+#
+# StreamHeader - Given the arguments, return the opening stream header.
+#
+##############################################################################
+sub StreamHeader
+{
+    my $self = shift;
+    my (%args) = @_;
+
+    my $stream;
+    $stream .= "<?xml version='1.0'?>";
+    $stream .= "<stream:stream ";
+    $stream .= "version='1.0' ";
+    $stream .= "xmlns:stream='".&ConstXMLNS("stream")."' ";
+    $stream .= "xmlns='$args{xmlns}' ";
+    $stream .= "to='$args{to}' " if exists($args{to});
+    $stream .= "from='$args{from}' " if exists($args{from});
+    $stream .= "xml:lang='$args{xmllang}' " if exists($args{xmllang});
+
+    foreach my $ns (@{$args{namespaces}})
+    {
+        $stream .= " ".$ns->GetStream();
+    }
+    
+    $stream .= ">";
+
+    return $stream;
+}
+
+
+###########################################################################
+#
+# debug - prints the arguments to the debug log if debug is turned on.
+#
+###########################################################################
+sub debug
+{
+    return if ($_[1] > $_[0]->{DEBUGLEVEL});
+    my $self = shift;
+    my ($limit,@args) = @_;
+    return if ($self->{DEBUGFILE} eq "");
+    my $fh = $self->{DEBUGFILE};
+    if ($self->{DEBUGTIME} == 1)
+    {
+        my ($sec,$min,$hour) = localtime(time);
+        print $fh sprintf("[%02d:%02d:%02d] ",$hour,$min,$sec);
+    }
+    print $fh "XML::Stream: @args\n";
+}
+
+
+##############################################################################
+#
+# nonblock - set the socket to be non-blocking.
+#
+##############################################################################
+sub nonblock
+{
+    my $self = shift;
+    my $socket = shift;
+
+    #--------------------------------------------------------------------------
+    # Code copied from POE::Wheel::SocketFactory...
+    # Win32 does things one way...
+    #--------------------------------------------------------------------------
+    if ($^O eq "MSWin32")
+    {
+        ioctl( $socket, 0x80000000 | (4 << 16) | (ord('f') << 8) | 126, 1) ||
+            croak("Can't make socket nonblocking (win32): $!");
+        return;
+    }
+
+    #--------------------------------------------------------------------------
+    # And UNIX does them another
+    #--------------------------------------------------------------------------
+    my $flags = fcntl($socket, F_GETFL, 0)
+        or die "Can't get flags for socket: $!\n";
+    fcntl($socket, F_SETFL, $flags | O_NONBLOCK)
+        or die "Can't make socket nonblocking: $!\n";
 }
 
 

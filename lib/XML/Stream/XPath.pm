@@ -26,7 +26,7 @@ use 5.006_001;
 use strict;
 use vars qw($VERSION %FUNCTIONS);
 
-$VERSION = "1.17";
+$VERSION = "1.18";
 
 use XML::Stream::XPath::Value;
 ($XML::Stream::XPath::Value::VERSION < $VERSION) &&

@@ -1,4 +1,12 @@
-XML::Stream v1.17
+*****************************************************
+
+  THIS RELEASE MAY NOT BE 100% STABLE.  I AM MAKING
+  IT SO THAT OTHERS CAN TEST.  IF THERE IS NO NEED
+  FOR YOU TO UPGRADE, THEN I SUGGEST YOU DO NOT.
+
+*****************************************************
+
+XML::Stream v1.18
 
 This module provides you with access to XML Streams.  An XML Stream
 is just that.  A stream of XML over a connection between two computers.
@@ -19,18 +27,19 @@ INSTALLATION
 
 REQUIREMENTS
 
-  Perl 5.8.0 - For unicode support
+  Perl 5.8.0            - For unicode support
+  Authen::SASL          - For SASL Authentication
+  MIME::Base64          - For SASL Authentication
 
 RECOMMENDATIONS
 
-  IO::Socket::SSL v0.81 - Module to enable SSL for XML::Stream.
-  Net::DNS - Enables access to SRV records.
+  IO::Socket::SSL v0.81 - Module to enable TLS for XML::Stream.
+  Net::DNS              - Enables access to SRV records.
 
 STATUS
 
-    This release supports mostly full XPath (only a few functions not
-implemented).  Also the Hash data type has been removed, please move to
-Node.
+    Initial support added for XMPP 1.0.  This release may not be stable.
 
 Please send any bug reports to reatmon@jabber.org.
-2003/06/30
+2004/04/01
+

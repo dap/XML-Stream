@@ -7,10 +7,15 @@ WriteMakefile(
 	      'NAME'	  => 'XML::Stream',
 	      'PM' 	  => {
 			      'Stream.pm' => '$(INST_LIBDIR)/Stream.pm',
+			      'Stream/Tree.pm' => '$(INST_LIBDIR)/Stream/Tree.pm',
+			      'Stream/Hash.pm' => '$(INST_LIBDIR)/Stream/Hash.pm',
 			      'Stream/Namespace.pm' => '$(INST_LIBDIR)/Stream/Namespace.pm',
 			      'Stream/Parser.pm' => '$(INST_LIBDIR)/Stream/Parser.pm',
 			      'Stream/Parser/DTD.pm' => '$(INST_LIBDIR)/Stream/Parser/DTD.pm',
 			     },
-	      'VERSION'   => '1.11',
+	      'PREREQ_PM' => {
+			      'Unicode::String' => 2.06,
+			     },
+	      'VERSION'   => '1.12',
 	      'dist'      => { 'COMPRESS' => 'gzip --best' }
 	     );

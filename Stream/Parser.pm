@@ -53,16 +53,16 @@ it under the same terms as Perl itself.
 
 require 5.003;
 use strict;
-use vars qw($VERSION $UNICODE);
+use vars qw($VERSION ); #$UNICODE);
 
-if ($] >= 5.006) {
-  $UNICODE = 1;
-} else {
+#if ($] >= 5.006) {
+#  $UNICODE = 1;
+#} else {
   require Unicode::String;
-  $UNICODE = 0;
-}
+#  $UNICODE = 0;
+#}
 
-$VERSION = "1.11";
+$VERSION = "1.12";
 
 sub new {
   my $self = { };
@@ -78,17 +78,24 @@ sub new {
   $self->{CNAME} = ();
   $self->{CURR} = 0;
 
-  $self->{SID} = $args{sid};
+  $self->{SID} = exists($args{sid}) ? $args{sid} : "__xmlstream__:sid";
 
   $self->{STYLE} = (exists($args{style}) ? lc($args{style}) : "tree");
   $self->{DTD} = (exists($args{dtd}) ? lc($args{dtd}) : 0);
 
-  $self->{HANDLER}->{startDocument} = sub{ $self->startDocument(@_); };
-  $self->{HANDLER}->{endDocument} = sub{ $self->endDocument(@_); };
-  $self->{HANDLER}->{startElement} = sub{ $self->startElement(@_); };
-  $self->{HANDLER}->{endElement} = sub{ $self->endElement(@_); };
-  $self->{HANDLER}->{characters} = sub{ $self->characters(@_); };
-
+  if ($self->{STYLE} eq "tree") {
+    $self->{HANDLER}->{startDocument} = sub{ $self->startDocument(@_); };
+    $self->{HANDLER}->{endDocument} = sub{ $self->endDocument(@_); };
+    $self->{HANDLER}->{startElement} = sub{ &XML::Stream::Tree::_handle_element(@_); };
+    $self->{HANDLER}->{endElement} = sub{ &XML::Stream::Tree::_handle_close(@_); };
+    $self->{HANDLER}->{characters} = sub{ &XML::Stream::Tree::_handle_cdata(@_); };
+  } elsif ($self->{STYLE} eq "hash") {
+    $self->{HANDLER}->{startDocument} = sub{ $self->startDocument(@_); };
+    $self->{HANDLER}->{endDocument} = sub{ $self->endDocument(@_); };
+    $self->{HANDLER}->{startElement} = sub{ &XML::Stream::Hash::_handle_element(@_); };
+    $self->{HANDLER}->{endElement} = sub{ &XML::Stream::Hash::_handle_close(@_); };
+    $self->{HANDLER}->{characters} = sub{ &XML::Stream::Hash::_handle_cdata(@_); };
+  }
   $self->setHandlers(%{$args{handlers}});
 
   return $self;
@@ -121,6 +128,8 @@ sub setHandlers {
 sub parse {
   my $self = shift;
   my $xml = shift;
+
+  return if ($xml eq "");
 
   while($xml =~ s/<\!--.*?-->//gs) {}
 
@@ -280,12 +289,22 @@ sub parsefile {
   my $self = shift;
   my $file = shift;
 
+  my $sid = $self->{SID};
+
   open(FILE,$file);
   while(<FILE>) { $self->parse($_); }
-  return unless exists($self->{TREE});
-  my @tree = @{$self->{TREE}};
-  delete($self->{TREE});
-  return ( \@tree );
+  if ($self->{STYLE} eq "hash") {
+    return unless exists($self->{SIDS}->{$sid}->{hash});
+    my %hash = %{$self->{SIDS}->{$sid}->{hash}};
+    delete($self->{SIDS}->{$sid}->{hash});
+    return %hash;
+  }
+  if ($self->{STYLE} eq "tree") {
+    return unless exists($self->{SIDS}->{$sid}->{tree});
+    my @tree = @{$self->{SIDS}->{$sid}->{tree}};
+    delete($self->{SIDS}->{$sid}->{tree});
+    return ( \@tree );
+  }
 }
 
 
@@ -334,13 +353,13 @@ sub characters {
   } else {
     return if ($#{$self->{TREE}} == -1);
 
-    if ($UNICODE == 1) {
-      eval("{  no warnings;  \$cdata =~ tr/\0-\x{ff}//UC;  };")
-    } else {
+#    if ($UNICODE == 1) {
+#      eval("{  no warnings;  \$cdata =~ tr/\0-\x{ff}//UC;  };");
+#    } else {
       my $unicode = new Unicode::String();
       $unicode->utf8($cdata);
       $cdata = $unicode->latin1;
-    }
+#    }
 
     my $pos = $#{$self->{TREE}};
 

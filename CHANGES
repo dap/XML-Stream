@@ -1,3 +1,29 @@
+1.12
+====
+  - Fixed SSL bug.
+  - Added support for the new HTTP::ProxyAutoConfig from Netscape.
+  - Fixed logic for proxy servers.  (This is gonna break for someone...
+    I can just feel it.)
+  - Added SSL support in for both tcpip and http connections.
+  - Removed support for native Unicode under perl 5.6.  It was causing a
+    big memory leak that the Unicode::String module does not incur.
+    This means that the Unicode::String module is now a requirement for
+    XML::Stream.
+  - Added in support for connecting via HTTP.  This takes a special server
+    that can keep the connection alive as the HTTP connection is setup only
+    once and is kept opne while you send and receive.  This allows you to
+    connect through proxy servers.
+  - More tweaks for memory usage and speed ups.
+  - Added in a new XML sotrage format to try and save space.  It's
+    a hash representation of the entire XML document.  XML::Parser::Tree
+    uses arrays of arrays and arrays of hashes which can consume memory
+    in very short order.  It was a good starting point, but it's time to
+    move on.  Se the INFO doc for more info on the new format.  (Not
+    done yet.)
+  - Added GetXMLData, SetXMLData, BuildXML, and EscapeXML which was
+    originally written for the Net::Jabber modules but realized that
+    they made more sense in here. =P
+
 1.11
 ====
   - Added in a module for DTD parsing.  This will hopefully lead to

@@ -1,10 +1,13 @@
 CHANGES
 README
+INFO
 LICENSE.LGPL
 MANIFEST
 MANIFEST.SKIP
 Makefile.PL
 Stream.pm
+Stream/Tree.pm
+Stream/Hash.pm
 Stream/Namespace.pm
 Stream/Parser.pm
 Stream/Parser/DTD.pm

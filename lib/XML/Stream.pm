@@ -253,6 +253,8 @@ use Carp;
 use POSIX;
 use Authen::SASL;
 use MIME::Base64;
+use utf8;
+use Encode;
 
 $SIG{PIPE} = "IGNORE";
 
@@ -276,13 +278,6 @@ $XMLNS{'xmpp-tls'}      = "urn:ietf:params:xml:ns:xmpp-tls";
 ##############################################################################
 
 
-BEGIN {
-    if( $] >= 5.008 )
-    {
-        eval("use open ':utf8';");
-    }
-}
-
 if (eval "require Net::DNS;" )
 {
     require Net::DNS;
@@ -295,7 +290,7 @@ else
 }
 
 
-$VERSION = "1.21";
+$VERSION = "1.22";
 $NONBLOCKING = 0;
 
 use XML::Stream::Namespace;
@@ -1387,8 +1382,8 @@ sub ParseStream
 sub Process
 {
     my $self = shift;
-    my($timeout) = @_;
-    $timeout = "" if !defined($timeout);
+    my $timeout = shift;
+    $timeout = "" unless defined($timeout);
 
     $self->debug(4,"Process: timeout($timeout)");
     #---------------------------------------------------------------------------
@@ -1617,7 +1612,12 @@ sub Read
     $self->debug(3,"Read: status(undef)") unless defined($status);
     $self->{SIDS}->{$sid}->{keepalive} = time
         unless (($buff eq "") || !defined($status) || ($status == 0));
-    return $buff unless (!defined($status) || ($status == 0));
+    if (defined($status) && ($status != 0))
+    {
+        $buff = Encode::decode_utf8($buff);
+        return $buff;
+    }
+    #return $buff unless (!defined($status) || ($status == 0));
     $self->debug(1,"Read: ERROR");
     return;
 }
@@ -1658,7 +1658,7 @@ sub Send
     {
         $self->debug(3,"Send: can_write");
         
-        $self->{SENDSTRING} = join("",@_);
+        $self->{SENDSTRING} = Encode::encode_utf8(join("",@_));
 
         $self->{SENDWRITTEN} = 0;
         $self->{SENDOFFSET} = 0;
@@ -1857,7 +1857,7 @@ sub StartTLS
     my $endTime = time + $timeout;
     while(!$self->TLSClientDone($sid) && ($endTime >= time))
     {
-        $self->Process($sid);
+        $self->Process(1);
     }
 
     if (!$self->TLSClientSecure($sid))
@@ -2044,7 +2044,18 @@ sub SASLAnswerChallenge
     my $challenge64 = &XPath($node,"text()");
     my $challenge = MIME::Base64::decode_base64($challenge64);
     
-    my $response = $self->{SIDS}->{$sid}->{sasl}->{client}->client_step($challenge);
+    #-------------------------------------------------------------------------
+    # As far as I can tell, if the challenge contains rspauth, then we authed.
+    # If you try to send that to Authen::SASL, it will spew warnings about
+    # the missing qop, nonce, etc...  However, in order for jabberd2 to think
+    # that you answered, you have to send back an empty response.  Not sure
+    # which approach is right... So let's hack for now.
+    #-------------------------------------------------------------------------
+    my $response = "";
+    if ($challenge !~ /rspauth\=/)
+    {
+        $response = $self->{SIDS}->{$sid}->{sasl}->{client}->client_step($challenge);
+    }
 
     my $response64 = MIME::Base64::encode_base64($response,"");
     $self->SASLResponse($sid,$response64);
@@ -2061,7 +2072,10 @@ sub SASLAuth
     my $self = shift;
     my $sid = shift;
 
-    $self->Send($sid,"<auth xmlns='".&ConstXMLNS('xmpp-sasl')."' mechanism='".$self->{SIDS}->{$sid}->{sasl}->{client}->mechanism()."'/>");
+    my $first_step = $self->{SIDS}->{$sid}->{sasl}->{client}->client_start();
+    my $first_step64 = MIME::Base64::encode_base64($first_step,"");
+
+    $self->Send($sid,"<auth xmlns='".&ConstXMLNS('xmpp-sasl')."' mechanism='".$self->{SIDS}->{$sid}->{sasl}->{client}->mechanism()."'>".$first_step64."</auth>");
 }
 
 
@@ -2098,8 +2112,11 @@ sub SASLClient
     return unless defined($mechanisms);
     
     my $sasl = new Authen::SASL(mechanism=>join(" ",@{$mechanisms}),
-                                callback=>{ user => $username,
-                                            pass => $password
+                                callback=>{
+                                           authname => $username."@".$self->{SIDS}->{$sid}->{hostname},
+
+                                           user     => $username,
+                                           pass     => $password
                                           }
                                );
 
@@ -2320,7 +2337,6 @@ sub _handle_root
     
     if ($tag eq $stream_prefix.":error")
     {
-        print "\n**************************\n\n";
         &XML::Stream::Tree::_handle_element($self,$sax,$tag,%att)
             if ($self->{DATASTYLE} eq "tree");
         &XML::Stream::Node::_handle_element($self,$sax,$tag,%att)

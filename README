@@ -1,12 +1,4 @@
-*****************************************************
-
-  THIS RELEASE MAY NOT BE 100% STABLE.  I AM MAKING
-  IT SO THAT OTHERS CAN TEST.  IF THERE IS NO NEED
-  FOR YOU TO UPGRADE, THEN I SUGGEST YOU DO NOT.
-
-*****************************************************
-
-XML::Stream v1.21
+XML::Stream v1.22
 
 This module provides you with access to XML Streams.  An XML Stream
 is just that.  A stream of XML over a connection between two computers.
@@ -38,8 +30,9 @@ RECOMMENDATIONS
 
 STATUS
 
-    Initial support added for XMPP 1.0.  This release may not be stable.
+    Initial support added for XMPP 1.0.  This release may not be stable.  If
+you run into problems, downgrade to 1.21.
 
 Please send any bug reports to reatmon@jabber.org.
-2004/04/01
+2004/08/22
 

@@ -1,5 +1,14 @@
+1.22
+====
+  - Using Encode module to handle utf encoding and decoding.  I cannot
+    just put the socket into utf8 because IO::Socket::SSL does not
+    support binmode.  So I'm calling decode_utf8() before returning the
+    Read string, and encode_utf8() before writing the Send string.
+  - Fixed SASL PLAIN authentication.
+
 1.21
 ====
+  - Sigh... Screwed up the CPAN release... again...
 
 1.20
 ====

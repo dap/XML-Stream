@@ -54,14 +54,7 @@ it under the same terms as Perl itself.
 use strict;
 use vars qw( $VERSION );
 
-$VERSION = "1.21";
-
-BEGIN {
-    if( $] >= 5.008 )
-    {
-        eval("use open ':utf8';");
-    }
-}
+$VERSION = "1.22";
 
 sub new
 {
@@ -430,14 +423,7 @@ sub parsefile
     my $self = shift;
     my $fileName = shift;
 
-    if( $] >= 5.008 )
-    {
-        open(FILE,"<:utf8",$fileName);
-    }
-    else
-    {
-        open(FILE,"<",$fileName);
-    }
+    open(FILE,"<",$fileName);
     my $file;
     while(<FILE>) { $file .= $_; }
     $self->parse($file);

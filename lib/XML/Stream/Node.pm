@@ -138,7 +138,7 @@ it under the same terms as Perl itself.
 
 use vars qw( $VERSION $LOADED );
 
-$VERSION = "1.21";
+$VERSION = "1.22";
 $LOADED = 1;
 
 sub new

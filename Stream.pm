@@ -29,9 +29,23 @@ XML::Stream - Creates and XML Stream connection and parses return data
 
 =head1 METHODS
 
-  Connect(name=>string,      - opens a tcp connection to the specified
+  new(debug=>string,       - creates the XML::Stream object.  debug should
+      debugfh=>FileHandle)   be set to the path for the debug log to be
+                             written.  If set to "stdout" then the debug
+                             will go there.   Also, you can specify a 
+                             filehandle that already exists and use that.
+
+  Connect(hostname=>string,  - opens a tcp connection to the specified
           port=>integer,       server and sends the proper opening XML
-          namespace=>string)   Stream tag.  All fields are required.
+          myhostname=>string,  Stream tag.  hostname, port, and namespace
+          namespace=>array,    are required.  namespaces allows you
+          namespaces=>array)   to use XML::Stream::Namespace objects.
+                               myhostname should not be needed but if 
+                               the module cannot determine your hostname 
+                               properly (check the debug log), set this 
+                               to the correct value, or if you want
+                               the other side of the stream to think that
+                               you are someone else.
 
   Disconnect() - sends the proper closing XML tag and closes the socket
                  down.
@@ -39,7 +53,7 @@ XML::Stream - Creates and XML Stream connection and parses return data
   Process(integer) - waits for data to be available on the socket.  If 
                      a timeout is specified then the Process function
                      waits that period of time before returning nothing.  
-                     If a timeout period is not specified then the 
+                     If a timeout period is not specified then the
                      function blocks until data is received.
 
   OnNode(function pointer) - sets the callback used to handle the
@@ -64,7 +78,7 @@ XML::Stream - Creates and XML Stream connection and parses return data
 
   $stream = new XML::Stream;
 
-  $stream->Connect(name => "jabber.org", 
+  $stream->Connect(hostname => "jabber.org", 
                    port => 5222, 
                    namespace => "jabber:client") || die $!;
 
@@ -83,7 +97,7 @@ XML::Stream - Creates and XML Stream connection and parses return data
 
   $stream = new XML::Stream;
   $stream->OnNode(\&noder);
-  $stream->Connect(name => "jabber.org",
+  $stream->Connect(hostname => "jabber.org",
 		   port => 5222,
 		   namespace => "jabber:client",
 		   timeout => undef) || die $!;
@@ -118,13 +132,14 @@ it under the same terms as Perl itself.
 
 require 5.003;
 use strict;
-use Carp;
+use Socket;
+use Sys::Hostname;
 use IO::Socket;
 use IO::Select;
 use XML::Parser;
 use vars qw($VERSION);
 
-$VERSION = "0.1";
+$VERSION = "1.0";
 
 use XML::Stream::Namespace;
 ($XML::Stream::Namespace::VERSION < $VERSION) &&
@@ -133,14 +148,61 @@ use XML::Stream::Namespace;
 sub new {
   my $self = { };
 
+  bless($self);
+
+  my %args;
+  while($#_ >= 0) { $args{ lc pop(@_) } = pop(@_); }
+
+  if (exists($args{debugfh}) && ($args{debugfh} ne "")) {
+    $self->{DEBUGFILE} = $args{debugfh};
+    $self->{DEBUG} = 1;
+  }
+  if ((exists($args{debugfh}) && ($args{debugfh} eq "")) && 
+       (exists($args{debug}) && ($args{debug} ne ""))) {
+    $self->{DEBUG} = 1;
+    if (lc($args{debug}) eq "stdout") {
+      open(DEBUG, ">STDOUT");
+      $self->{DEBUGFILE} = \*DEBUG;
+    } else {
+      if (-e $args{debug}) {
+	if (-w $args{debug}) {
+	  open(DEBUG, ">$args{debug}");
+	  $self->{DEBUGFILE} = \*DEBUG;
+	} else {
+	  print "WARNING: debug file ($args{debug}) is not writable by you\n";
+	  print "         No debug information being saved.\n";
+	  $self->{DEBUG} = 0;
+	}
+      } else {
+	if (open(DEBUG, ">$args{debug}")) {
+	  $self->{DEBUGFILE} = \*DEBUG;
+	} else {
+	  print "WARNING: debug file ($args{debug}) does not exist \n";
+	  print "         and is not writable by you.\n";
+	  print "         No debug information being saved.\n";
+	  $self->{DEBUG} = 0;
+	}
+      }
+    }
+  }
+
+  my $hostname = hostname();
+  my $address = gethostbyname($hostname) || 
+    die("Cannot resolve $hostname: $!");
+  my $fullname = gethostbyaddr($address,AF_INET) || 
+    die("Cannot re-resolve $hostname: $!");
+
+  $self->debug("XML::Stream: new: hostname = ($fullname)");
+
   #---------------------------------------------------------------------------
   # Setup the defaults that the module will work with.
   #---------------------------------------------------------------------------
-  $self->{SERVER} = {name => "",
+  $self->{SERVER} = {hostname => "",
 		     port => "", 
 		     sock => 0, 
-		     namespace => "", 
-		     timeout => 0};
+		     namespace => "",
+		     myhostname => $fullname,
+		     derivedhostname => $fullname };
   
   #---------------------------------------------------------------------------
   # We are only going to use one callback, let the user call other callbacks
@@ -162,8 +224,20 @@ sub new {
   #---------------------------------------------------------------------------
   $self->{NODES} = ();
 
-  bless($self);
   return $self;
+}
+
+
+###########################################################################
+#
+# debug - prints the arguments to the debug log if debug is turned on.
+#
+###########################################################################
+sub debug {
+  my $self = shift;
+  return if !($self->{DEBUG});
+  my $fh = $self->{DEBUGFILE};
+  print $fh "@_\n";
 }
 
 
@@ -177,14 +251,15 @@ sub new {
 ##############################################################################
 sub Connect {
   my $self = shift;
+  my $timeout = exists $_{timeout} ? delete $_{timeout} : "";
   while($#_ >= 0) { $self->{SERVER}{ lc pop(@_) } = pop(@_); }
 
   #---------------------------------------------------------------------------
   # Check some things that we have to know in order get the connection up
-  # and running.  Server name, port number, namespace, etc...
+  # and running.  Server hostname, port number, namespace, etc...
   #---------------------------------------------------------------------------
-  if ($self->{SERVER}{name} eq "") { 
-    $! = "Server name not specified";
+  if ($self->{SERVER}{hostname} eq "") { 
+    $! = "Server hostname not specified";
     return undef;
   }
   if ($self->{SERVER}{port} eq "") {
@@ -195,32 +270,43 @@ sub Connect {
     $! = "Namespace not specified";
     return undef;
   }
+  if ($self->{SERVER}{myhostname} eq "") {
+    $self->{SERVER}{myhostname} = $self->{SERVER}{derivedhostname};
+  }
   
   #---------------------------------------------------------------------------
   # Open the connection to the listed server and port.  If that fails then
   # abort ourselves and let the user check $! on his own.
   #---------------------------------------------------------------------------
   $self->{SERVER}{sock} = 
-    new IO::Socket::INET(PeerAddr => $self->{SERVER}{name}, 
+    new IO::Socket::INET(PeerAddr => $self->{SERVER}{hostname}, 
 			 PeerPort => $self->{SERVER}{port}, 
 			 Proto => 'tcp');
   return undef unless $self->{SERVER}{sock};
   $self->{SERVER}{sock}->autoflush(1);
   
-
+  #---------------------------------------------------------------------------
+  # Next, we build the opening handshake.
+  #---------------------------------------------------------------------------
+  my $stream = '<?xml version="1.0"?>';
+  $stream .= '<stream:stream ';
+  $stream .= 'xmlns:stream="http://etherx.jabber.org/streams" ';
+  $stream .= 'to="'.$self->{SERVER}{hostname}.'" ';
+  $stream .= 'from="'.$self->{SERVER}{myhostname}.'" ' if ($self->{SERVER}{myhostname} ne "");
+  $stream .= 'xmlns="'.$self->{SERVER}{namespace}.'" ';
+  $stream .= 'id="'.$self->{SERVER}{id}.'"' if ($self->{SERVER}{id} ne "");
   my $namespaces = "";
   my $ns;
   foreach $ns (@{$self->{SERVER}{namespaces}}) {
     $namespaces .= " ".$ns->GetStream();
+    $stream .= " ".$ns->GetStream();
   }
+  $stream .= ">";
 
   #---------------------------------------------------------------------------
-  # Now let's send the opening handshake.
+  # Then we send the opening handshake.
   #---------------------------------------------------------------------------
-  $self->{SERVER}{sock}->print(<<EOF) || return undef;
-<?xml version="1.0"?>
-<stream:stream xmlns:stream="http://etherx.jabber.org/streams" to="$self->{SERVER}{name}" xmlns="$self->{SERVER}{namespace}"$namespaces>
-EOF
+  $self->Send($stream) || return undef;
 
   #---------------------------------------------------------------------------
   # Create the XML::Parser and register our callbacks
@@ -237,15 +323,19 @@ EOF
   # Before going on let's make sure that the server responded with a valid
   # root tag and that the stream is open.
   #---------------------------------------------------------------------------
-  my ($buff, $timeout);
+  my $buff;
+  my $timeStart = time();
   while($self->{STATUS} == 0) {
-    if($self->{SERVER}{select}->can_read(1)) {
-      $self->{SERVER}{sock}->sysread($buff,1024);
+    if ($self->{SERVER}{select}->can_read(0)) {
+#      $self->{SERVER}{sock}->sysread($buff,1024);
+      $buff = $self->Read();
       $self->{SERVER}{parser}->parse_more($buff);
       # ToDo: we need to try/catch expat parsing errors here, no?
     } else {
-      $timeout++;
-      return undef if($timeout > $self->{SERVER}{timeout});
+      if ($timeout ne "") {
+	$timeout -= (time() - $timeStart);
+	return undef if($timeout <= 0);
+      }
     }
     
     return undef if($self->{SERVER}{select}->has_error(0));
@@ -253,7 +343,7 @@ EOF
   if($self->{STATUS} != 1) {
     return undef;
   }
-  return 1;
+  return $self->GetRoot();
 }
 
 
@@ -283,6 +373,8 @@ sub Disconnect {
 sub Process {
   my $self = shift;
   my($timeout) = @_;
+  $timeout = "" if !defined($timeout);
+
   my($buff);
 
   
@@ -299,18 +391,31 @@ sub Process {
   #---------------------------------------------------------------------------
   # Make sure the connection is active.
   #---------------------------------------------------------------------------
-  return undef unless($self->{STATUS} == 1);
+  return undef unless ($self->{STATUS} == 1);
   
   #---------------------------------------------------------------------------
-  # Use the proper timeout, either the one defined here or in the default.
-  # Either block until there is data, or wait a certain period of time and
-  # then return control to the user.
+  # Either block until there is data and we have parsed it all, or wait a 
+  # certain period of time and then return control to the user.
   #---------------------------------------------------------------------------
-  if($self->{SERVER}{select}->can_read($timeout eq "" ? $self->{SERVER}{timeout} : $timeout)) {
-    $status = 1;
-    $self->{SERVER}{sock}->sysread($buff,1024);
-    $self->{SERVER}{parser}->parse_more($buff);
-    return undef unless($self->{STATUS} == 1);
+  my $block = 1;
+  my $timeStart = time();
+  while($block == 1) {
+    if($self->{SERVER}{select}->can_read(0)) {
+      while($self->{SERVER}{select}->can_read(0)) {
+	$status = 1;
+	$self->{STATUS} = -1 if (!defined($buff = $self->Read()));
+#	$self->{STATUS} = -1 if ($self->{SERVER}{sock}->sysread($buff,1024) == 0);
+	$self->{SERVER}{parser}->parse_more($buff);
+	return undef unless($self->{STATUS} == 1);
+      }
+      $block = 0;
+    }
+
+    if ($timeout ne "") {
+      $timeout -= (time() - $timeStart);
+      $block = 0 if ($timeout <= 0);
+    }
+    select(undef,undef,undef,.25);
   }
   
   #---------------------------------------------------------------------------
@@ -377,7 +482,25 @@ sub GetSock {
 ##############################################################################
 sub Send {
   my $self = shift;
-  $self->{SERVER}{sock}->print(@_);
+  $self->debug("XML::Stream: Send: (@_)");
+  $self->{SERVER}{sock}->print(@_) || return undef;
+  return 1;
+}
+
+
+##############################################################################
+#
+# Read - Takes the data from the server and returns a string
+#
+##############################################################################
+sub Read {
+  my $self = shift;
+  my $buff;
+  my $status = $self->{SERVER}{sock}->sysread($buff,1024);
+  $self->debug("XML::Stream: Read: ($buff)");
+  return $buff unless $status == 0;
+  $self->debug("XML::Stream: Read: ERROR");
+  return undef;
 }
 
 
@@ -406,7 +529,7 @@ sub _handle_root {
   # you'll need to check the namespace or the from attributes sent by the 
   # server.
   #---------------------------------------------------------------------------
-  $self->{ROOT} = %att;
+  $self->{ROOT} = \%att;
 
   #---------------------------------------------------------------------------
   # Now that we have gotten a root tag, let's look for the tags that make up

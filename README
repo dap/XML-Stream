@@ -1,4 +1,4 @@
-XML::Stream v0.1b
+XML::Stream v1.0
 
 This module provides you with access to XML Streams.  An XML Stream
 is just that.  A stream of XML over a connection between two computers.
@@ -24,10 +24,12 @@ INSTALLATION
   make
   make install
 
+
 STATUS
 
-  This module is now in beta.  Use at your own risk.
+  While I'm not going to guarentee that this module works 100%, we have not 
+received any bug reports for a while and I've tested it for about two months.
 
 
 Please send any bug reports to reatmon@ti.com.
-02/16/2000
+04/17/2000

@@ -1,3 +1,13 @@
+1.0
+===
+  - Version bump.
+  - Changed method of handling timeouts in the Connect and Process block.
+    The timeout from the Connect is no longer remembered in the Process
+    and used.  This method has improved the speed of the module greatly.
+  - Fixed bug where the Process was not properly handling a connection 
+    breakdown.  It now returns undef, or "", when the server dies or the
+    connection is dropped.
+
 0.1b
 ====
   - Added XML::Stream::Namespace to make writting Perl modules for other

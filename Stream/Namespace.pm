@@ -75,13 +75,15 @@ use strict;
 use Carp;
 use vars qw($VERSION);
 
-$VERSION = "0.1";
+$VERSION = "1.0";
 
 sub new {
   my $proto = shift;
   my $self = { };
 
   ($self->{Namespace}) = @_ if ($#_ > -1);
+
+  $self->{Attributes} = {};
 
   bless($self,$proto);
   return $self;
@@ -108,15 +110,11 @@ sub SetAttributes {
   my $self = shift;
   my %att = @_;
 
-  $self->{Attributes} = {};
-
   my $key;
   foreach $key (keys(%att)) {
     $self->{Attributes}->{$key} = $att{$key};
   }
 }
-
-
 
 
 sub GetNamespace {

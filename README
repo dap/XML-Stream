@@ -1,4 +1,4 @@
-XML::Stream v1.10
+XML::Stream v1.11
 
 This module provides you with access to XML Streams.  An XML Stream
 is just that.  A stream of XML over a connection between two computers.
@@ -12,10 +12,6 @@ Jabber Perl Team Leader
 reatmon@jabber.org
 
 
-REQUIREMENTS
-
-  - XML::Parser
-
 INSTALLATION
 
   perl Makefile.PL
@@ -25,10 +21,15 @@ INSTALLATION
 
 STATUS
 
-  This release should be considered unstable.  This is the start of
-supporting a new connection type and might not be 100% hammered out
-yet.
-
+  With this release I've added in a new Parser that the module uses to
+parse the incoming streams.  This new Parser is a SAX parser based off
+of the one written by Jeremie Miller.
+  Also with this release I've started adding in the ability for
+XML::Stream to listen on a port and accept incoming streams.  This feature
+in still under development so don't try and use it yet...
+  Finally, I've started working on a DTD parser and verifier for the
+module, but it is by no means even close to being done.  So don't even look
+into using it. =)
 
 Please send any bug reports to reatmon@jabber.org.
-2000/09/26
+2001/02/14

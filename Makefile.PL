@@ -7,11 +7,10 @@ WriteMakefile(
 	      'NAME'	  => 'XML::Stream',
 	      'PM' 	  => {
 			      'Stream.pm' => '$(INST_LIBDIR)/Stream.pm',
-			      'Stream/Namespace.pm' => '$(INST_LIBDIR)/Stream/Namespace.pm'
+			      'Stream/Namespace.pm' => '$(INST_LIBDIR)/Stream/Namespace.pm',
+			      'Stream/Parser.pm' => '$(INST_LIBDIR)/Stream/Parser.pm',
+			      'Stream/Parser/DTD.pm' => '$(INST_LIBDIR)/Stream/Parser/DTD.pm',
 			     },
-	      'PREREQ_PM' => {
-			      'XML::Parser' => 0 
-			     },
-	      'VERSION'   => '1.10',
+	      'VERSION'   => '1.11',
 	      'dist'      => { 'COMPRESS' => 'gzip --best' }
 	     );

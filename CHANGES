@@ -1,3 +1,14 @@
+1.11
+====
+  - Added in a module for DTD parsing.  This will hopefully lead to
+    verification of XML Streams based off of DTD.
+  - Fixed bug in the Process function caused by the new way of handling
+    multiple connections with detecting a broken connection.
+  - Added code to handle listening for incoming connections on a port
+    for a namespace.  THIS IS STILL UNDER DEVELOPMENT!
+  - Added XML::Stream::Parser to replace XML::Parser.
+  - Fixed bug in the timeout code.
+
 1.10
 ====
   - Added SetCallBacks function to repleace OnNode and provide other

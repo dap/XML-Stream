@@ -6,3 +6,5 @@ MANIFEST.SKIP
 Makefile.PL
 Stream.pm
 Stream/Namespace.pm
+Stream/Parser.pm
+Stream/Parser/DTD.pm

@@ -192,7 +192,9 @@ use Socket;
 use Sys::Hostname;
 use IO::Socket;
 use IO::Select;
-use XML::Parser;
+use FileHandle;
+use Carp;
+use POSIX;
 use vars qw($VERSION $UNICODE);
 
 if ($] >= 5.006) {
@@ -202,11 +204,15 @@ if ($] >= 5.006) {
   $UNICODE = 0;
 }
 
-$VERSION = "1.10";
+$VERSION = "1.11";
 
 use XML::Stream::Namespace;
 ($XML::Stream::Namespace::VERSION < $VERSION) &&
   die("XML::Stream::Namespace $VERSION required--this is only version $XML::Stream::Namespace::VERSION");
+
+use XML::Stream::Parser;
+($XML::Stream::Parser::VERSION < $VERSION) &&
+  die("XML::Stream::Parser $VERSION required--this is only version $XML::Stream::Parser::VERSION");
 
 sub new {
   my $self = { };
@@ -216,37 +222,36 @@ sub new {
   my %args;
   while($#_ >= 0) { $args{ lc pop(@_) } = pop(@_); }
 
-  $self->{KEEPALIVE} = time;
-
   $self->{DEBUGTIME} = 0;
   $self->{DEBUGTIME} = $args{debugtime} if exists($args{debugtime});
 
-  $self->{DEBUGLEVEL} = 1;
+  $self->{DEBUGLEVEL} = 0;
   $self->{DEBUGLEVEL} = $args{debuglevel} if exists($args{debuglevel});
 
   if (exists($args{debugfh}) && ($args{debugfh} ne "")) {
     $self->{DEBUGFILE} = $args{debugfh};
     $self->{DEBUG} = 1;
   }
-  if ((exists($args{debugfh}) && ($args{debugfh} eq "")) && 
+  if ((exists($args{debugfh}) && ($args{debugfh} eq "")) ||
        (exists($args{debug}) && ($args{debug} ne ""))) {
     $self->{DEBUG} = 1;
     if (lc($args{debug}) eq "stdout") {
-      open(DEBUG, ">STDOUT");
-      $self->{DEBUGFILE} = \*DEBUG;
+      $self->{DEBUGFILE} = new FileHandle(">&STDERR");
+      $self->{DEBUGFILE}->autoflush(1);
     } else {
       if (-e $args{debug}) {
 	if (-w $args{debug}) {
-	  open(DEBUG, ">$args{debug}");
-	  $self->{DEBUGFILE} = \*DEBUG;
+	  $self->{DEBUGFILE} = new FileHandle(">$args{debug}");
+	  $self->{DEBUGFILE}->autoflush(1);
 	} else {
 	  print "WARNING: debug file ($args{debug}) is not writable by you\n";
 	  print "         No debug information being saved.\n";
 	  $self->{DEBUG} = 0;
 	}
       } else {
-	if (open(DEBUG, ">$args{debug}")) {
-	  $self->{DEBUGFILE} = \*DEBUG;
+	$self->{DEBUGFILE} = new FileHandle(">$args{debug}");
+	if (defined($self->{DEBUGFILE})) {
+	  $self->{DEBUGFILE}->autoflush(1);
 	} else {
 	  print "WARNING: debug file ($args{debug}) does not exist \n";
 	  print "         and is not writable by you.\n";
@@ -267,14 +272,14 @@ sub new {
   #---------------------------------------------------------------------------
   # Setup the defaults that the module will work with.
   #---------------------------------------------------------------------------
-  $self->{SERVER} = {hostname => "",
-		     port => "", 
-		     sock => 0,
-		     ssl=>(exists($args{ssl}) ? $args{ssl} : 0),
-		     namespace => "",
-		     myhostname => $fullname,
-		     derivedhostname => $fullname,
-		     id => ""};
+  $self->{CONNECTIONS}->{sids}->{server}->{hostname} = "";
+  $self->{CONNECTIONS}->{sids}->{server}->{port} = "";
+  $self->{CONNECTIONS}->{sids}->{server}->{sock} = 0;
+  $self->{CONNECTIONS}->{sids}->{server}->{ssl} = (exists($args{ssl}) ? $args{ssl} : 0);
+  $self->{CONNECTIONS}->{sids}->{server}->{namespace} = "";
+  $self->{CONNECTIONS}->{sids}->{server}->{myhostname} = $fullname;
+  $self->{CONNECTIONS}->{sids}->{server}->{derivedhostname} = $fullname;
+  $self->{CONNECTIONS}->{sids}->{server}->{id} = "";
   
   #---------------------------------------------------------------------------
   # We are only going to use one callback, let the user call other callbacks
@@ -282,37 +287,7 @@ sub new {
   #---------------------------------------------------------------------------
   $self->SetCallBacks(node=>sub { $self->_node(@_) });
 
-  #---------------------------------------------------------------------------
-  # Set the default STATUS so that we can keep track of it throughout the
-  # session.  1 = no errors, -1 = error from handlers, 0 = no data has been
-  # received yet.
-  #---------------------------------------------------------------------------
-  $self->{STATUS} = 0;
-
-  #---------------------------------------------------------------------------
-  # A storage place for when we don't have a callback registered and we need
-  # to stockpile the nodes we receive until Process is called and we return 
-  # them.
-  #---------------------------------------------------------------------------
-  $self->{NODES} = ();
-
-  #---------------------------------------------------------------------------
-  # A storage place for when we don't have a callback registered and we need
-  # to stockpile the nodes we receive until Process is called and we return 
-  # them.
-  #---------------------------------------------------------------------------
-  $self->{XML} = "";
-
-  #---------------------------------------------------------------------------
-  # If there is an error on the stream, then we need a place to indicate that.
-  #---------------------------------------------------------------------------
-  $self->{STREAMERROR} = "";
-
-  #---------------------------------------------------------------------------
-  # Flag to determine if we are alrady parsing and need to store the incoming
-  # XML until later.
-  #---------------------------------------------------------------------------
-  $self->{PARSING} = 0;
+  $self->{IDCOUNT} = 0;
 
   return $self;
 }
@@ -338,6 +313,199 @@ sub debug {
 
 ##############################################################################
 #
+# Listen - starts the stream by listening on a port for someone to connect, 
+#          and send the opening stream tag, and then sending a response based
+#          on if the received header was correct for this stream.  Server 
+#          name, port, and namespace are required otherwise we don't know 
+#          where to listen and what namespace to accept.
+#
+##############################################################################
+sub Listen {
+  my $self = shift;
+  my $timeout = exists $_{timeout} ? delete $_{timeout} : "";
+  while($#_ >= 0) { $self->{CONNECTIONS}->{sids}->{server}->{ lc pop(@_) } = pop(@_); }
+
+  $self->debug(1,"Listen: start");
+
+  if ($self->{CONNECTIONS}->{sids}->{server}->{namespace} eq "") {
+    $self->SetErrorCode("server","Namespace not specified");
+    return;
+  }
+
+  #---------------------------------------------------------------------------
+  # Check some things that we have to know in order get the connection up
+  # and running.  Server hostname, port number, namespace, etc...
+  #---------------------------------------------------------------------------
+  if ($self->{CONNECTIONS}->{sids}->{server}->{hostname} eq "") {
+    $self->SetErrorCode("server","Server hostname not specified");
+    return;
+  }
+  if ($self->{CONNECTIONS}->{sids}->{server}->{port} eq "") {
+    $self->SetErrorCode("server","Server port not specified");
+    return;
+  }
+  if ($self->{CONNECTIONS}->{sids}->{server}->{myhostname} eq "") {
+    $self->{CONNECTIONS}->{sids}->{server}->{myhostname} = $self->{CONNECTIONS}->{sids}->{server}->{derivedhostname};
+  }
+  
+  #-------------------------------------------------------------------------
+  # Open the connection to the listed server and port.  If that fails then
+  # abort ourselves and let the user check $! on his own.
+  #-------------------------------------------------------------------------
+
+  while($self->{CONNECTIONS}->{sids}->{server}->{sock} == 0) {
+    $self->{CONNECTIONS}->{sids}->{server}->{sock} = 
+      new IO::Socket::INET(LocalHost=>$self->{CONNECTIONS}->{sids}->{server}->{hostname},
+			   LocalPort=>$self->{CONNECTIONS}->{sids}->{server}->{port},
+			   Reuse=>1,
+			   Listen=>10,
+			   Proto=>'tcp');
+    select(undef,undef,undef,.1);
+  }
+  $self->{CONNECTIONS}->{sids}->{server}->{status} = 1;
+  $self->nonblock($self->{CONNECTIONS}->{sids}->{server}->{sock});
+  $self->{CONNECTIONS}->{sids}->{server}->{sock}->autoflush(1);
+  
+  $self->{CONNECTIONS}->{select} = 
+    new IO::Select($self->{CONNECTIONS}->{sids}->{server}->{sock});
+  $self->{CONNECTIONS}->{sids}->{server}->{select} = 
+    new IO::Select($self->{CONNECTIONS}->{sids}->{server}->{sock});
+
+  $self->{CONNECTIONS}->{sockets}->{$self->{CONNECTIONS}->{sids}->{server}->{sock}} = "server";
+  
+}
+
+
+sub ConnectionAccept {
+  my $self = shift;
+
+  my $sid = $self->NewSID();
+
+  $self->debug(1,"ConnectionAccept: sid($sid)");
+
+  $self->{CONNECTIONS}->{sids}->{$sid}->{sock} = 
+    $self->{CONNECTIONS}->{sids}->{server}->{sock}->accept();
+
+  $self->nonblock($self->{CONNECTIONS}->{sids}->{$sid}->{sock});
+  $self->{CONNECTIONS}->{sids}->{$sid}->{sock}->autoflush(1);
+
+  $self->debug(3,"ConnectionAccept: sid($sid) client($self->{CONNECTIONS}->{sids}->{$sid}->{sock}) server($self->{CONNECTIONS}->{sids}->{server}->{sock})");
+  
+  $self->{CONNECTIONS}->{select}->add($self->{CONNECTIONS}->{sids}->{$sid}->{sock});
+
+  #-------------------------------------------------------------------------
+  # Create the XML::Parser and register our callbacks
+  #-------------------------------------------------------------------------
+  $self->{CONNECTIONS}->{sids}->{$sid}->{parser} =
+    new XML::Stream::Parser(sid=>$sid,
+			    Handlers=>{
+				       startElement=>sub{ $self->_handle_root(@_) },
+				       endElement=>sub{ $self->_handle_close(@_) },
+				       characters=>sub{ $self->_handle_cdata(@_) }
+				      }
+			   );
+  
+  $self->{CONNECTIONS}->{sids}->{$sid}->{select} =
+    new IO::Select($self->{CONNECTIONS}->{sids}->{$sid}->{sock});
+  $self->{CONNECTIONS}->{sids}->{$sid}->{connectiontype} = "tcpip";
+  $self->{CONNECTIONS}->{sockets}->{$self->{CONNECTIONS}->{sids}->{$sid}->{sock}} = $sid;
+
+  $self->InitConnection($sid);
+
+  #---------------------------------------------------------------------------
+  # Grab the init time so that we can check if we get data in the timeout
+  # period or not.
+  #---------------------------------------------------------------------------
+  $self->{CONNECTIONS}->{sids}->{$sid}->{activitytimeout} = time;
+}
+
+
+sub InitConnection {
+  my $self = shift;
+  my $sid = shift;
+
+  #---------------------------------------------------------------------------
+  # Set the default STATUS so that we can keep track of it throughout the
+  # session.  
+  #   1 = no errors
+  #   0 = no data has been received yet
+  #  -1 = error from handlers
+  #  -2 = error but keep the connection alive so that we can send some info.
+  #---------------------------------------------------------------------------
+  $self->{CONNECTIONS}->{sids}->{$sid}->{status} = 0;
+
+  #---------------------------------------------------------------------------
+  # A storage place for when we don't have a callback registered and we need
+  # to stockpile the nodes we receive until Process is called and we return 
+  # them.
+  #---------------------------------------------------------------------------
+  $self->{CONNECTIONS}->{sids}->{$sid}->{nodes} = ();
+
+  #---------------------------------------------------------------------------
+  # If there is an error on the stream, then we need a place to indicate that.
+  #---------------------------------------------------------------------------
+  $self->{CONNECTIONS}->{sids}->{$sid}->{streamerror} = "";
+
+  #---------------------------------------------------------------------------
+  # Grab the init time so that we can keep the connection alive by sending " "
+  #---------------------------------------------------------------------------
+  $self->{CONNECTIONS}->{sids}->{$sid}->{keepalive} = time;
+}  
+
+
+sub Respond {
+  my $self = shift;
+  my $sid = shift;
+  
+  if ($self->GetRoot($sid)->{xmlns} ne $self->{CONNECTIONS}->{sids}->{server}->{namespace}) {
+    $self->Send($sid,"<stream:error>Invalid namespace specified.</stream:error>");
+    $self->{CONNECTIONS}->{sids}->{$sid}->{sock}->flush();
+    select(undef,undef,undef,1);
+    $self->Disconnect($sid);
+  }
+
+  #---------------------------------------------------------------------------
+  # Next, we build the opening handshake.
+  #---------------------------------------------------------------------------
+  my $stream = '<?xml version="1.0"?>';
+  $stream .= '<stream:stream ';
+  $stream .= 'xmlns:stream="http://etherx.jabber.org/streams" ';
+  $stream .= 'xmlns="'.$self->{CONNECTIONS}->{sids}->{server}->{namespace}.'" ';
+  $stream .= 'from="'.$self->{CONNECTIONS}->{sids}->{server}->{hostname}.'" ' unless exists($self->{CONNECTIONS}->{sids}->{server}->{from});
+  $stream .= 'from="'.$self->{CONNECTIONS}->{sids}->{server}->{from}.'" ' if exists($self->{CONNECTIONS}->{sids}->{server}->{from});
+  $stream .= 'to="'.$self->GetRoot($sid)->{from}.'" ';
+  $stream .= 'id="'.$sid.'" ';
+  my $namespaces = "";
+  my $ns;
+  foreach $ns (@{$self->{CONNECTIONS}->{sids}->{server}->{namespaces}}) {
+    $namespaces .= " ".$ns->GetStream();
+    $stream .= " ".$ns->GetStream();
+  }
+  $stream .= ">";
+
+  #---------------------------------------------------------------------------
+  # Then we send the opening handshake.
+  #---------------------------------------------------------------------------
+  $self->Send($sid,$stream);
+  delete($self->{CONNECTIONS}->{sids}->{$sid}->{activitytimeout});
+}
+
+
+sub nonblock {
+  my $self = shift;
+  my $socket = shift;
+  my $flags;
+  
+#  $socket->autoflush(1);
+  $flags = fcntl($socket, F_GETFL, 0)
+    or die "Can't get flags for socket: $!\n";
+  fcntl($socket, F_SETFL, $flags | O_NONBLOCK)
+    or die "Can't make socket nonblocking: $!\n";
+}
+
+
+##############################################################################
+#
 # Connect - starts the stream by connecting to the server, sending the opening
 #           stream tag, and then waiting for a response and verifying that it
 #           is correct for this stream.  Server name, port, and namespace are
@@ -347,63 +515,64 @@ sub debug {
 sub Connect {
   my $self = shift;
   my $timeout = exists $_{timeout} ? delete $_{timeout} : "";
-  while($#_ >= 0) { $self->{SERVER}{ lc pop(@_) } = pop(@_); }
+  while($#_ >= 0) { $self->{CONNECTIONS}->{sids}->{server}->{ lc pop(@_) } = pop(@_); }
 
-  $self->{SERVER}{connectiontype} = "tcpip" 
-    unless exists($self->{SERVER}{connectiontype});
+  $self->{CONNECTIONS}->{sids}->{server}->{connectiontype} = "tcpip" 
+    unless exists($self->{CONNECTIONS}->{sids}->{server}->{connectiontype});
 
-  $self->debug(1,"Connect: type($self->{SERVER}{connectiontype})");
+  $self->debug(1,"Connect: type($self->{CONNECTIONS}->{sids}->{server}->{connectiontype})");
 
-  if ($self->{SERVER}{namespace} eq "") {
-    $self->SetErrorCode("Namespace not specified");
+  if ($self->{CONNECTIONS}->{sids}->{server}->{namespace} eq "") {
+    $self->SetErrorCode("server","Namespace not specified");
     return;
   }
 
-  if ($self->{SERVER}{connectiontype} eq "tcpip") {
+  $self->InitConnection("server");
 
+  if ($self->{CONNECTIONS}->{sids}->{server}->{connectiontype} eq "tcpip") {
     #-------------------------------------------------------------------------
     # Check some things that we have to know in order get the connection up
     # and running.  Server hostname, port number, namespace, etc...
     #-------------------------------------------------------------------------
-    if ($self->{SERVER}{hostname} eq "") {
-      $self->SetErrorCode("Server hostname not specified");
+    if ($self->{CONNECTIONS}->{sids}->{server}->{hostname} eq "") {
+      $self->SetErrorCode("server","Server hostname not specified");
       return;
     }
-    if ($self->{SERVER}{port} eq "") {
-      $self->SetErrorCode("Server port not specified");
+    if ($self->{CONNECTIONS}->{sids}->{server}->{port} eq "") {
+      $self->SetErrorCode("server","Server port not specified");
       return;
     }
-    if ($self->{SERVER}{myhostname} eq "") {
-      $self->{SERVER}{myhostname} = $self->{SERVER}{derivedhostname};
+    if ($self->{CONNECTIONS}->{sids}->{server}->{myhostname} eq "") {
+      $self->{CONNECTIONS}->{sids}->{server}->{myhostname} = $self->{CONNECTIONS}->{sids}->{server}->{derivedhostname};
     }
   
     #-------------------------------------------------------------------------
     # Open the connection to the listed server and port.  If that fails then
     # abort ourselves and let the user check $! on his own.
     #-------------------------------------------------------------------------
-    if ($self->{SERVER}{ssl} == 0) {
-      $self->{SERVER}{sock} = 
-	new IO::Socket::INET(PeerAddr => $self->{SERVER}{hostname}, 
-			     PeerPort => $self->{SERVER}{port}, 
+    if ($self->{CONNECTIONS}->{sids}->{server}->{ssl} == 0) {
+      $self->{CONNECTIONS}->{sids}->{server}->{sock} = 
+	new IO::Socket::INET(PeerAddr => $self->{CONNECTIONS}->{sids}->{server}->{hostname}, 
+			     PeerPort => $self->{CONNECTIONS}->{sids}->{server}->{port}, 
 			     Proto => 'tcp');
     } else {
 #      print "Use SSL...\n";
 #      use IO::Socket::SSL;
-      $IO::Socket::SSL::DEBUG = 1;
-      &Net::Jabber::printData("\$self->{SERVER}",$self->{SERVER});
-      $self->{SERVER}{sock} = 
-	new IO::Socket::SSL(PeerAddr => $self->{SERVER}{hostname},
-			    PeerPort => $self->{SERVER}{port}, 
+#      $IO::Socket::SSL::DEBUG = 1;
+      &Net::Jabber::printData("\$self->{CONNECTIONS}->{sids}->{server}",$self->{CONNECTIONS}->{sids}->{server});
+      $self->{CONNECTIONS}->{sids}->{server}->{sock} = 
+	new IO::Socket::SSL(PeerAddr => $self->{CONNECTIONS}->{sids}->{server}->{hostname},
+			    PeerPort => $self->{CONNECTIONS}->{sids}->{server}->{port}, 
 			    Proto => 'tcp'
 			   );
     }
-    return unless $self->{SERVER}{sock};
-    $self->{SERVER}{sock}->autoflush(1);
+    return unless $self->{CONNECTIONS}->{sids}->{server}->{sock};
   }
-  if ($self->{SERVER}{connectiontype} eq "stdinout") {
-    $self->{STDOUT} = new FileHandle(">&STDOUT");
-    $self->{STDOUT}->autoflush(1);
+  if ($self->{CONNECTIONS}->{sids}->{server}->{connectiontype} eq "stdinout") {
+    $self->{CONNECTIONS}->{sids}->{server}->{sock} =
+      new FileHandle(">&STDOUT");
   }	
+  $self->{CONNECTIONS}->{sids}->{server}->{sock}->autoflush(1);
   
   #---------------------------------------------------------------------------
   # Next, we build the opening handshake.
@@ -411,16 +580,16 @@ sub Connect {
   my $stream = '<?xml version="1.0"?>';
   $stream .= '<stream:stream ';
   $stream .= 'xmlns:stream="http://etherx.jabber.org/streams" ';
-  $stream .= 'xmlns="'.$self->{SERVER}{namespace}.'" ';
-  if ($self->{SERVER}{connectiontype} eq "tcpip") {
-    $stream .= 'to="'.$self->{SERVER}{hostname}.'" ' unless exists($self->{SERVER}{to});
-    $stream .= 'to="'.$self->{SERVER}{to}.'" ' if exists($self->{SERVER}{to});
-    $stream .= 'from="'.$self->{SERVER}{myhostname}.'" ' if (!exists($self->{SERVER}{from}) && ($self->{SERVER}{myhostname} ne ""));
-    $stream .= 'from="'.$self->{SERVER}{from}.'" ' if exists($self->{SERVER}{from});
-    $stream .= 'id="'.$self->{SERVER}{id}.'"' if (exists($self->{SERVER}{id}) && ($self->{SERVER}{id} ne ""));
+  $stream .= 'xmlns="'.$self->{CONNECTIONS}->{sids}->{server}->{namespace}.'" ';
+  if ($self->{CONNECTIONS}->{sids}->{server}->{connectiontype} eq "tcpip") {
+    $stream .= 'to="'.$self->{CONNECTIONS}->{sids}->{server}->{hostname}.'" ' unless exists($self->{CONNECTIONS}->{sids}->{server}->{to});
+    $stream .= 'to="'.$self->{CONNECTIONS}->{sids}->{server}->{to}.'" ' if exists($self->{CONNECTIONS}->{sids}->{server}->{to});
+    $stream .= 'from="'.$self->{CONNECTIONS}->{sids}->{server}->{myhostname}.'" ' if (!exists($self->{CONNECTIONS}->{sids}->{server}->{from}) && ($self->{CONNECTIONS}->{sids}->{server}->{myhostname} ne ""));
+    $stream .= 'from="'.$self->{CONNECTIONS}->{sids}->{server}->{from}.'" ' if exists($self->{CONNECTIONS}->{sids}->{server}->{from});
+    $stream .= 'id="'.$self->{CONNECTIONS}->{sids}->{server}->{id}.'"' if (exists($self->{CONNECTIONS}->{sids}->{server}->{id}) && ($self->{CONNECTIONS}->{sids}->{server}->{id} ne ""));
     my $namespaces = "";
     my $ns;
-    foreach $ns (@{$self->{SERVER}{namespaces}}) {
+    foreach $ns (@{$self->{CONNECTIONS}->{sids}->{server}->{namespaces}}) {
       $namespaces .= " ".$ns->GetStream();
       $stream .= " ".$ns->GetStream();
     }
@@ -430,49 +599,79 @@ sub Connect {
   #---------------------------------------------------------------------------
   # Create the XML::Parser and register our callbacks
   #---------------------------------------------------------------------------
-  my $expat =
-    new XML::Parser(Handlers=>{ 
-			       Start => sub { $self->_handle_root(@_) },
-			       End   => sub { $self->_handle_close(@_) },
-			       Char  => sub { $self->_handle_cdata(@_) } 
-			      });
-  $self->{SERVER}{parser} = $expat->parse_start();
+  $self->{CONNECTIONS}->{sids}->{server}->{parser} =
+    new XML::Stream::Parser(sid=>"server",
+			    Handlers=>{
+				       startElement=>sub{ $self->_handle_root(@_) },
+				       endElement=>sub{ $self->_handle_close(@_) },
+				       characters=>sub{ $self->_handle_cdata(@_) }
+				      }
+			   );
   
-  $self->{SERVER}{select} = new IO::Select($self->{SERVER}{sock})
-    if ($self->{SERVER}{connectiontype} eq "tcpip");
-  $self->{SERVER}{select} = new IO::Select(*STDIN)
-    if ($self->{SERVER}{connectiontype} eq "stdinout");
+  $self->{CONNECTIONS}->{sids}->{server}->{select} = 
+    new IO::Select($self->{CONNECTIONS}->{sids}->{server}->{sock});
+
+  if ($self->{CONNECTIONS}->{sids}->{server}->{connectiontype} eq "tcpip") {
+    $self->{CONNECTIONS}->{select} = new IO::Select($self->{CONNECTIONS}->{sids}->{server}->{sock});
+    $self->{CONNECTIONS}->{sockets}->{$self->{CONNECTIONS}->{sids}->{server}->{sock}} = "server";
+  }
+
+  if ($self->{CONNECTIONS}->{sids}->{server}->{connectiontype} eq "stdinout") {
+    $self->{CONNECTIONS}->{select} = new IO::Select(*STDIN);
+    $self->{CONNECTIONS}->{sockets}->{$self->{CONNECTIONS}->{sids}->{server}->{sock}} = "server";
+    $self->{CONNECTIONS}->{sockets}->{*STDIN} = "server";
+    $self->{CONNECTIONS}->{sids}->{server}->{select}->add(*STDIN);
+  }
 
   #---------------------------------------------------------------------------
   # Then we send the opening handshake.
   #---------------------------------------------------------------------------
-  $self->Send($stream) || return;
+  $self->Send("server",$stream) || return;
 
   #---------------------------------------------------------------------------
   # Before going on let's make sure that the server responded with a valid
   # root tag and that the stream is open.
   #---------------------------------------------------------------------------
-  my $buff;
+  my $buff = "";
   my $timeStart = time();
-  while($self->{STATUS} == 0) {
-    if ($self->{SERVER}{select}->can_read(0)) {
-      $self->{STATUS} = -1 if (!defined($buff = $self->Read()));
-      return unless($self->{STATUS} == 0);
-      return unless($self->ParseStream($buff) == 1);
+  while($self->{CONNECTIONS}->{sids}->{server}->{status} == 0) {
+    $self->debug(5,"Connect: can_read(",join(",",$self->{CONNECTIONS}->{sids}->{server}->{select}->can_read(0)),")");
+    if ($self->{CONNECTIONS}->{sids}->{server}->{select}->can_read(0)) {
+      $self->{CONNECTIONS}->{sids}->{server}->{status} = -1 
+	unless defined($buff = $self->Read("server"));
+      return unless($self->{CONNECTIONS}->{sids}->{server}->{status} == 0);
+      return unless($self->ParseStream("server",$buff) == 1);
     } else {
       if ($timeout ne "") {
-	$timeout -= (time() - $timeStart);
-	if ($timeout <= 0) {
-	  $self->SetErrorCode("Timeout limit reached");
+	if ($timeout <= (time() - $timeStart)) {
+	  $self->SetErrorCode("server","Timeout limit reached");
 	  return;
 	}
       }
     }
-
-    return if($self->{SERVER}{select}->has_error(0));
+    
+    return if($self->{CONNECTIONS}->{sids}->{server}->{select}->has_error(0));
   }
-  return if($self->{STATUS} != 1);
-  return $self->GetRoot();
+  return if($self->{CONNECTIONS}->{sids}->{server}->{status} != 1);
+
+  $self->debug(3,"Connect: status($self->{CONNECTIONS}->{sids}->{server}->{status})");
+  
+  my $sid = $self->GetRoot("server")->{id};
+  $self->{CONNECTIONS}->{sids}->{$sid} = $self->{CONNECTIONS}->{sids}->{server};
+  $self->{CONNECTIONS}->{sids}->{$sid}->{parser}->setSID($sid);
+
+  if ($self->{CONNECTIONS}->{sids}->{server}->{connectiontype} eq "tcpip") {
+    $self->{CONNECTIONS}->{sockets}->{$self->{CONNECTIONS}->{sids}->{server}->{sock}} = $sid;
+  }
+
+  if ($self->{CONNECTIONS}->{sids}->{server}->{connectiontype} eq "stdinout") {
+    $self->{CONNECTIONS}->{sockets}->{$self->{CONNECTIONS}->{sids}->{server}->{sock}} = $sid;
+    $self->{CONNECTIONS}->{sockets}->{*STDIN} = $sid;
+  }
+
+  delete($self->{CONNECTIONS}->{sids}->{server});
+
+  return $self->GetRoot($sid);
 }
 
 
@@ -483,9 +682,13 @@ sub Connect {
 ##############################################################################
 sub Disconnect {
   my $self = shift;
+  my $sid = shift;
 
-  $self->Send("</stream:stream>");
-  close($self->{SERVER}{sock}) if ($self->{SERVER}{connectiontype} eq "tcpip");
+  $self->Send($sid,"</stream:stream>");
+  close($self->{CONNECTIONS}->{sids}->{$sid}->{sock})
+    if ($self->{CONNECTIONS}->{sids}->{$sid}->{connectiontype} eq "tcpip");
+  delete($self->{CONNECTIONS}->{sockets}->{$self->{CONNECTIONS}->{sids}->{$sid}->{sock}});
+  delete($self->{CONNECTIONS}->{sids}->{$sid}->{sock});
 }
 
 
@@ -507,23 +710,20 @@ sub Process {
   $self->debug(2,"Process: timeout($timeout)");
   #---------------------------------------------------------------------------
   # We need to keep track of what's going on in the function and tell the
-  # outside world about it so let's return something useful:
+  # outside world about it so let's return something useful.  We track this
+  # information based on sid:
+  #    -1    connection closed and error
   #     0    connection open but no data received.
   #     1    connection open and data received.
-  #   undef  connection closed and error
   #   array  connection open and the data that has been collected 
   #          over time (No CallBack specified)
   #---------------------------------------------------------------------------
-  my ($status) = 0;
-  
-  $self->debug(2,"Process: status($status)");
-  $self->debug(2,"Process: connection_status($self->{STATUS})");
+  my %status;
+  foreach my $sid (keys(%{$self->{CONNECTIONS}->{sids}})) {
+    $self->debug(5,"Process: initialize sid($sid) status to 0");
+    $status{$sid} = 0;
+  }
 
-  #---------------------------------------------------------------------------
-  # Make sure the connection is active.
-  #---------------------------------------------------------------------------
-  return unless ($self->{STATUS} == 1);
-  
   #---------------------------------------------------------------------------
   # Either block until there is data and we have parsed it all, or wait a 
   # certain period of time and then return control to the user.
@@ -532,58 +732,113 @@ sub Process {
   my $timeStart = time();
   while($block == 1) {
     $self->debug(3,"Process: let's wait for data");
-    if($self->{SERVER}{select}->can_read(0)) {
-      $self->debug(3,"Process: there's something to read");
-      my $buff;
-      while($self->{SERVER}{select}->can_read(0)) {
+    $self->debug(4,"Process: can_read(",$self->{CONNECTIONS}->{select}->can_read(0),")");
+    foreach my $connection ($self->{CONNECTIONS}->{select}->can_read(0)) {
+
+      $self->debug(2,"Process: connection($connection)");
+      $self->debug(2,"Process: sid($self->{CONNECTIONS}->{sockets}->{$connection})");
+      $self->debug(2,"Process: connection_status($self->{CONNECTIONS}->{sids}->{$self->{CONNECTIONS}->{sockets}->{$connection}}->{status})");
+
+      next unless (($self->{CONNECTIONS}->{sids}->{$self->{CONNECTIONS}->{sockets}->{$connection}}->{status} == 1) ||
+		   exists($self->{CONNECTIONS}->{sids}->{$self->{CONNECTIONS}->{sockets}->{$connection}}->{activitytimeout}));
+
+      if (exists($self->{CONNECTIONS}->{sids}->{server}) &&
+	  exists($self->{CONNECTIONS}->{sids}->{server}->{sock}) &&
+	  ($connection == $self->{CONNECTIONS}->{sids}->{server}->{sock})) {
+	$self->ConnectionAccept();
+      } else {
+	my $sid = $self->{CONNECTIONS}->{sockets}->{$connection};
+	$self->debug(3,"Process: there's something to read");
+	$self->debug(3,"Process: connection($connection) sid($sid)");
+	my $buff;
 	$self->debug(3,"Process: read");
-	$status = 1;
-	$self->{STATUS} = -1 if (!defined($buff = $self->Read()));
-	$self->debug(3,"Process: connection_status($self->{STATUS})");
-	return unless($self->{STATUS} == 1);
+	$status{$sid} = 1;
+	$self->{CONNECTIONS}->{sids}->{$sid}->{status} = -1
+	  if (!defined($buff = $self->Read($sid)));
+	$self->debug(3,"Process: connection_status($self->{CONNECTIONS}->{sids}->{$sid}->{status})");
+	$status{$sid} = -1 unless($self->{CONNECTIONS}->{sids}->{$sid}->{status} == 1);
 	$self->debug(3,"Process: parse($buff)");
-	return unless($self->ParseStream($buff) == 1);
+	$status{$sid} = -1 unless($self->ParseStream($sid,$buff) == 1);
       }
       $block = 0;
     }
 
     if ($timeout ne "") {
-      my $time = time;
-      $timeout -= ($time - $timeStart);
-      $timeStart = $time;
-      $block = 0 if ($timeout <= 0);
-      select(undef,undef,undef,.25) unless ($timeout <= 0);
+      if ($timeout <= (time - $timeStart)) {
+	$block = 0;
+      } else {
+	select(undef,undef,undef,.25);
+      }
     } else {
       select(undef,undef,undef,.25);
     }
     $self->debug(3,"Process: timeout($timeout)");
-    
-    if (exists($self->{CB}{update})) {
+
+    if (exists($self->{CB}->{update})) {
       $self->debug(3,"Process: Calling user defined update function");
-      &{$self->{CB}{update}}();
+      &{$self->{CB}->{update}}();
     }
-    
-    $block = 1 if $self->{SERVER}{select}->can_read(0);
-    $self->Send(" ") if ((time - $self->{KEEPALIVE}) > 60);
+
+    $block = 1 if $self->{CONNECTIONS}->{select}->can_read(0);
+    #-------------------------------------------------------------------------
+    # Check for connections that need to be kept alive
+    #-------------------------------------------------------------------------
+    $self->debug(3,"Process: check for keepalives");
+    foreach my $sid (keys(%{$self->{CONNECTIONS}->{sids}})) {
+      next if ($sid eq "server");
+      $self->Send($sid," ")
+	if ((time - $self->{CONNECTIONS}->{sids}->{$sid}->{keepalive}) > 60);
+    }
+    #-------------------------------------------------------------------------
+    # Check for connections that have timed out.
+    #-------------------------------------------------------------------------
+    $self->debug(3,"Process: check for timeouts");
+    foreach my $sid (keys(%{$self->{CONNECTIONS}->{sids}})) {
+      $self->debug(3,"Process: sid($sid) time(",time,") timeout($self->{CONNECTIONS}->{sids}->{$sid}->{activitytimeout})") if exists($self->{CONNECTIONS}->{sids}->{$sid}->{activitytimeout});
+      $self->debug(3,"Process: sid($sid) time(",time,") timeout(undef)") unless exists($self->{CONNECTIONS}->{sids}->{$sid}->{activitytimeout});
+      $self->Respond($sid)
+	if (exists($self->{CONNECTIONS}->{sids}->{$sid}->{activitytimeout}) &&
+	    defined($self->GetRoot($sid)));
+      $self->Disconnect($sid) 
+	if (exists($self->{CONNECTIONS}->{sids}->{$sid}->{activitytimeout}) &&
+	    ((time - $self->{CONNECTIONS}->{sids}->{$sid}->{activitytimeout}) > 10) &&
+	    ($self->{CONNECTIONS}->{sids}->{$sid}->{status} != 1));
+    }
+
+
+    #-------------------------------------------------------------------------
+    # If any of the connections have status == -1 then return so that the user
+    # can handle it.
+    #-------------------------------------------------------------------------
+    foreach my $connection (keys(%status)) {
+      if ($status{$connection} == -1) {
+	$self->debug(2,"Process: sid($connection) is broken... let's tell someone and watch it hit the fan... =)");
+	$block = 0;
+      }
+    }
+
     $self->debug(3,"Process: block($block)");
   }
 
   #---------------------------------------------------------------------------
   # If the Select has an error then shut this party down.
   #---------------------------------------------------------------------------
-  $self->debug(2,"Process: has_error(",$self->{SERVER}{select}->has_error(0),")");
-  return if($self->{SERVER}{select}->has_error(0));
-  
+  foreach my $connection ($self->{CONNECTIONS}->{select}->has_error(0)) {
+    $self->debug(2,"Process: has_error sid($self->{CONNECTIONS}->{sockets}->{$connection})");
+    $status{$self->{CONNECTIONS}->{sockets}->{$connection}} = -1;
+  }
+
   #---------------------------------------------------------------------------
   # If there are XML::Parser::Tree objects that have not been collected return
   # those, otherwise return the status which indicates if nodes were read or 
   # not.
   #---------------------------------------------------------------------------
-  if($#{$self->{NODES}} > -1) {
-    return shift @{$self->{NODES}};
-  } else {
-    return $status; # signal that we're ok
+  foreach my $sid (keys(%status)) {
+    $status{$sid} = shift @{$self->{CONNECTIONS}->{sids}->{$sid}->{nodes}}
+      if (($status{$sid} == 1) &&
+	  ($#{$self->{CONNECTIONS}->{sids}->{$sid}->{nodes}} > -1));
   }
+  return %status;
 }
 
 
@@ -597,58 +852,21 @@ sub Process {
 ##############################################################################
 sub ParseStream {
   my $self = shift;
-  my ($stream) = @_;
+  my $sid = shift;
+  my $stream = shift;
+  
+  $self->debug(2,"ParseStream: sid($sid) stream($stream)");
 
-  $self->debug(2,"ParseStream: incoming($stream) current($self->{XML})");
-
-  $self->{XML} .= $stream;
-
-  if ($self->{PARSING} == 1) {
-    $self->debug(2,"ParseStream: we are in the middle of a parse!!!!!  BAIL!!!!!");
-    return 1;
+  $self->{CONNECTIONS}->{sids}->{$sid}->{parser}->parse($stream);
+  
+  if ($self->{CONNECTIONS}->{sids}->{$sid}->{streamerror} ne "") {
+    $self->debug(2,"ParseStream: ERROR($self->{CONNECTIONS}->{sids}->{$sid}->{streamerror})");
+    $self->SetErrorCode($sid,$self->{CONNECTIONS}->{sids}->{$sid}->{streamerror});
+    return 0;
   }
-
-  $self->{PARSING} = 1;
-
-  my $goodXML = "";
-  my $badXML = "";
-
-  while($badXML ne $self->{XML}) {  
-    ($goodXML,$badXML) = ($self->{XML} =~ /^([\w\W]+)(\<[^\>]+)$/);
-    
-    $goodXML = $badXML = "" if (!defined($goodXML) && !defined($badXML));
-
-    $self->debug(2,"ParseStream: goodXML($goodXML) badXML($badXML)");
-    
-    if (($goodXML eq "") && ($badXML eq "")) {
-      $goodXML = $self->{XML};
-      $self->{XML} = "";
-    } else {
-      $self->{XML} = $badXML;
-    }
-    
-    $self->debug(2,"ParseStream: parse($goodXML) save($self->{XML})");
-    
-    $self->{SERVER}{parser}->parse_more($goodXML);
-    
-    if ($self->{STREAMERROR} ne "") {
-      $self->debug(2,"ParseStream: ERROR($self->{STREAMERROR})");
-      $self->SetErrorCode($self->{STREAMERROR});
-      return;
-    }
-    
-    $self->debug(2,"ParseStream: test badXML($badXML) current($self->{XML})");
-    if ($badXML ne $self->{XML}) {
-      $self->debug(2,"ParseStream: someone tried to parse while we were running");
-      $self->debug(2,"ParseStream: let's run again to clear out that XML");
-    }
-  }	
-  $self->debug(2,"ParseStream: returning");
-    
-  $self->{PARSING} = 0;
+  
   return 1;
 }
-
 
 
 ##############################################################################
@@ -664,6 +882,22 @@ sub OnNode {
 }
 
 
+##############################################################################
+#
+# NewSID - returns a session ID to send to an incoming stream in the return
+#          header.  By default it just increments a counter and returns that,
+#          or you can define a function and set it using the SetCallBacks
+#          function.
+#
+##############################################################################
+sub NewSID {
+  my $self = shift;
+  return &{$self->{CB}->{sid}}() if (exists($self->{CB}->{sid}) &&
+				     defined($self->{CB}->{sid}));
+  return $$.time.$self->{IDCOUNT}++;
+}
+
+
 ###########################################################################
 #
 # SetCallBacks - Takes a hash with top level tags to look for as the keys
@@ -676,7 +910,7 @@ sub SetCallBacks {
     my $func = pop(@_);
     my $tag = pop(@_);
     $self->debug(1,"SetCallBacks: tag($tag) func($func)");
-    $self->{CB}{$tag} = $func;
+    $self->{CB}->{$tag} = $func;
   }
 }
 
@@ -690,7 +924,9 @@ sub SetCallBacks {
 ##############################################################################
 sub GetRoot {
   my $self = shift;
-  return $self->{ROOT};
+  my $sid = shift;
+  return unless exists($self->{CONNECTIONS}->{sids}->{$sid}->{root});
+  return $self->{CONNECTIONS}->{sids}->{$sid}->{root};
 }
 
 
@@ -702,7 +938,8 @@ sub GetRoot {
 ##############################################################################
 sub GetSock {
   my $self = shift;
-  return $self->{SERVER}{sock};
+  my $sid = shift;
+  return $self->{CONNECTIONS}->{$sid}->{sock};
 }
 
 
@@ -713,21 +950,25 @@ sub GetSock {
 ##############################################################################
 sub Send {
   my $self = shift;
+  my $sid = shift;
   $self->debug(1,"Send: (@_)");
+  $self->debug(3,"Send: sid($sid)");
+  $self->debug(3,"Send: status($self->{CONNECTIONS}->{sids}->{$sid}->{status})");
 
-  return if ($self->{STATUS} == -1);
+  return if ($self->{CONNECTIONS}->{sids}->{$sid}->{status} == -1);
 
-  if ($self->{SERVER}{select}->can_write(0)) {
+  $self->debug(3,"Send: socket($self->{CONNECTIONS}->{sids}->{$sid}->{sock})");
+
+  $self->{CONNECTIONS}->{sids}->{$sid}->{sock}->flush();
+
+  if ($self->{CONNECTIONS}->{sids}->{$sid}->{select}->can_write(0)) {
     my $string = join("",@_);
     my $written;
     my $offset = 0;
     my $length = length($string);
     while ($length) {
-      $written = $self->{SERVER}{sock}->syswrite($string,$length,$offset)
-	if ($self->{SERVER}{connectiontype} eq "tcpip");
-      $written = syswrite($self->{STDOUT},$string,$length,$offset)
-	if ($self->{SERVER}{connectiontype} eq "stdinout");
-      
+      $written = $self->{CONNECTIONS}->{sids}->{$sid}->{sock}->syswrite($string,$length,$offset);
+
       return unless defined($written);
       
       $length -= $written;
@@ -735,15 +976,9 @@ sub Send {
     }
   }
 
-  return if($self->{SERVER}{select}->has_error(0));
+  return if($self->{CONNECTIONS}->{sids}->{$sid}->{select}->has_error(0));
 
-#  if ($self->{SERVER}{connectiontype} eq "tcpip") {
-#    $self->{SERVER}{sock}->print(@_) || return;
-#  }
-#  if ($self->{SERVER}{connectiontype} eq "stdinout") {
-#    $self->{STDOUT}->print("@_\n");
-#  }
-  $self->{KEEPALIVE} = time;
+  $self->{CONNECTIONS}->{sids}->{$sid}->{keepalive} = time;
   return 1;
 }
 
@@ -755,16 +990,28 @@ sub Send {
 ##############################################################################
 sub Read {
   my $self = shift;
+  my $sid = shift;
   my $buff;
   my $status = 1;
-  $status = $self->{SERVER}{sock}->sysread($buff,1024) 
-    if ($self->{SERVER}{connectiontype} eq "tcpip");
+
+  $self->debug(3,"Read: sid($sid)");
+  $self->debug(3,"Read: connectionType($self->{CONNECTIONS}->{sids}->{$sid}->{connectiontype})");
+  $self->debug(3,"Read: socket($self->{CONNECTIONS}->{sids}->{$sid}->{sock})");
+
+  $self->{CONNECTIONS}->{sids}->{$sid}->{sock}->flush();
+
+  $status = $self->{CONNECTIONS}->{sids}->{$sid}->{sock}->
+    sysread($buff,POSIX::BUFSIZ)
+      if ($self->{CONNECTIONS}->{sids}->{$sid}->{connectiontype} eq "tcpip");
   $status = sysread(STDIN,$buff,1024)
-    if ($self->{SERVER}{connectiontype} eq "stdinout");
-  $self->debug(1,"Read: ($buff)");
-  $self->{KEEPALIVE} = time unless (($buff eq "") || ($status == 0));
-  return $buff unless ($status == 0);
-  $self->debug(1,"Read: ERROR");  
+    if ($self->{CONNECTIONS}->{sids}->{$sid}->{connectiontype} eq "stdinout");
+  $self->debug(1,"Read: buff($buff)");
+  $self->debug(3,"Read: status($status)") if defined($status);
+  $self->debug(3,"Read: status(undef)") unless defined($status);
+  $self->{CONNECTIONS}->{sids}->{$sid}->{keepalive} = time
+    unless (($buff eq "") || !defined($status) || ($status == 0));
+  return $buff unless (!defined($status) || ($status == 0));
+  $self->debug(1,"Read: ERROR");
   return;
 }
 
@@ -777,7 +1024,12 @@ sub Read {
 ##############################################################################
 sub GetErrorCode {
   my $self = shift;
-  return (($self->{ERRORCODE} ne "") ? $self->{ERRORCODE} : $!);
+  my $sid = shift;
+  $self->debug(3,"GetErrorCode: sid($sid)");  
+  return ((exists($self->{CONNECTIONS}->{sids}->{$sid}->{errorcode}) && 
+	   ($self->{CONNECTIONS}->{sids}->{$sid}->{errorcode} ne "")) ? 
+	  $self->{CONNECTIONS}->{sids}->{$sid}->{errorcode} : 
+	  $!);
 }
 
 
@@ -789,8 +1041,9 @@ sub GetErrorCode {
 ##############################################################################
 sub SetErrorCode {
   my $self = shift;
+  my $sid = shift;
   my ($errorcode) = @_;
-  $self->{ERRORCODE} = $errorcode;
+  $self->{CONNECTIONS}->{sids}->{$sid}->{errorcode} = $errorcode;
 }
 
 
@@ -804,39 +1057,44 @@ sub SetErrorCode {
 ##############################################################################
 sub _handle_root {
   my $self = shift;
-  my ($expat, $tag, %att) = @_;
+  my ($sax, $tag, %att) = @_;
+  my $sid = $sax->getSID();
 
-  $self->debug(2,"_handle_root: expat($expat) tag($tag) att(",%att,")");
+  $self->debug(2,"_handle_root: sid($sid) sax($sax) tag($tag) att(",%att,")");
   
   #---------------------------------------------------------------------------
   # Make sure we are receiving a valid stream on the same namespace.
   #---------------------------------------------------------------------------
-  $self->{STATUS} = 
-    (($tag eq "stream:stream") && exists($att{'xmlns'}) &&
-     ($att{'xmlns'} eq $self->{SERVER}{namespace})) ? 1 : -1;
-
+  $self->{CONNECTIONS}->{sids}->{$sid}->{status} = 
+    ((($tag eq "stream:stream") && 
+      exists($att{'xmlns'}) &&
+      ($att{'xmlns'} eq $self->{CONNECTIONS}->{sids}->{server}->{namespace})
+     ) ? 
+     1 :
+     -1
+    );
   
   #---------------------------------------------------------------------------
   # Get the root tag attributes and save them for later.  You never know when
   # you'll need to check the namespace or the from attributes sent by the 
   # server.
   #---------------------------------------------------------------------------
-  $self->{ROOT} = \%att;
+  $self->{CONNECTIONS}->{sids}->{$sid}->{root} = \%att;
 
   #---------------------------------------------------------------------------
   # Sometimes we will get an error, so let's parse the tag assuming that we
   # got a stream:error
   #---------------------------------------------------------------------------
-  $self->_handle_element($expat,$tag,%att) if ($tag eq "stream:error");
+  $self->_handle_element($sid,$sax,$tag,%att) if ($tag eq "stream:error");
 
   #---------------------------------------------------------------------------
   # Now that we have gotten a root tag, let's look for the tags that make up
   # the stream.  Change the handler for a Start tag to another function.
   #---------------------------------------------------------------------------
-  $expat->setHandlers(Start => sub { $self->_handle_element(@_)} ,
-		      End   => sub { $self->_handle_close(@_) },
-		      Char  => sub { $self->_handle_cdata(@_) } 
-		     );
+  $sax->setHandlers(startElement=>sub{ $self->_handle_element(@_)} ,
+		    endElement=>sub{ $self->_handle_close(@_) },
+		    characters=>sub{ $self->_handle_cdata(@_) } 
+		   );
 }
 
 
@@ -850,18 +1108,19 @@ sub _handle_root {
 ##############################################################################
 sub _handle_element {
   my $self = shift;
-  my ($expat, $tag, %att) = @_;
+  my ($sax, $tag, %att) = @_;
+  my $sid = $sax->getSID();
 
-  $self->debug(2,"_handle_element: expat($expat) tag($tag) att(",%att,")");
+  $self->debug(2,"_handle_element: sid($sid) sax($sax) tag($tag) att(",%att,")");
 
   my @NEW;
-  if($#{$self->{TREE}} < 0) {
-    push @{$self->{TREE}}, $tag;
+  if($#{$self->{CONNECTIONS}->{sids}->{$sid}->{tree}} < 0) {
+    push @{$self->{CONNECTIONS}->{sids}->{$sid}->{tree}}, $tag;
   } else {
-    push @{ $self->{TREE}[ $#{$self->{TREE}}]}, $tag;
+    push @{ $self->{CONNECTIONS}->{sids}->{$sid}->{tree}[ $#{$self->{CONNECTIONS}->{sids}->{$sid}->{tree}}]}, $tag;
   }
   push @NEW, \%att;
-  push @{$self->{TREE}}, \@NEW;
+  push @{$self->{CONNECTIONS}->{sids}->{$sid}->{tree}}, \@NEW;
 }
 
 
@@ -874,11 +1133,12 @@ sub _handle_element {
 ##############################################################################
 sub _handle_cdata {
   my $self = shift;
-  my ($expat, $cdata) = @_;
+  my ($sax, $cdata) = @_;
+  my $sid = $sax->getSID();
 
-  $self->debug(2,"_handle_cdata: expat($expat) cdata($cdata)");
+  $self->debug(2,"_handle_cdata: sid($sid) sax($sax) cdata($cdata)");
 
-  return if ($#{$self->{TREE}} == -1);
+  return if ($#{$self->{CONNECTIONS}->{sids}->{$sid}->{tree}} == -1);
 
   if ($UNICODE == 1) {
     eval("{  no warnings;  \$cdata =~ tr/\0-\x{ff}//UC;  };")
@@ -888,18 +1148,18 @@ sub _handle_cdata {
     $cdata = $unicode->latin1;
   }
 
-#  $self->debug(2,"_handle_cdata: expat($expat) cdata($cdata)");
+#  $self->debug(2,"_handle_cdata: sax($sax) cdata($cdata)");
   
-  my $pos = $#{$self->{TREE}};
+  my $pos = $#{$self->{CONNECTIONS}->{sids}->{$sid}->{tree}};
   $self->debug(2,"_handle_cdata: pos($pos)");
 
-  if ($pos > 0 && $self->{TREE}[$pos - 1] eq "0") {
+  if ($pos > 0 && $self->{CONNECTIONS}->{sids}->{$sid}->{tree}[$pos - 1] eq "0") {
     $self->debug(2,"_handle_cdata: append cdata");
-    $self->{TREE}[$pos - 1] .= $cdata;
+    $self->{CONNECTIONS}->{sids}->{$sid}->{tree}[$pos - 1] .= $cdata;
   } else {
     $self->debug(2,"_handle_cdata: new cdata");
-    push @{$self->{TREE}[$#{$self->{TREE}}]}, 0;
-    push @{$self->{TREE}[$#{$self->{TREE}}]}, $cdata;
+    push @{$self->{CONNECTIONS}->{sids}->{$sid}->{tree}[$#{$self->{CONNECTIONS}->{sids}->{$sid}->{tree}}]}, 0;
+    push @{$self->{CONNECTIONS}->{sids}->{$sid}->{tree}[$#{$self->{CONNECTIONS}->{sids}->{$sid}->{tree}}]}, $cdata;
   }	
 }
 
@@ -913,26 +1173,28 @@ sub _handle_cdata {
 ##############################################################################
 sub _handle_close {
   my $self = shift;
-  my ($expat, $tag) = @_;
+  my ($sax, $tag) = @_;
+  my $sid = $sax->getSID();
 
-  $self->debug(2,"_handle_close: expat($expat) tag($tag)");
+  $self->debug(2,"_handle_close: sid($sid) sax($sax) tag($tag)");
   
-  my $CLOSED = pop @{$self->{TREE}};
+  my $CLOSED = pop @{$self->{CONNECTIONS}->{sids}->{$sid}->{tree}};
   
-  $self->debug(2,"_handle_close: check(",$#{$self->{TREE}},")");
+  $self->debug(2,"_handle_close: check(",$#{$self->{CONNECTIONS}->{sids}->{$sid}->{tree}},")");
 
-  if($#{$self->{TREE}} < 1) {
-    push @{$self->{TREE}}, $CLOSED;
+  if($#{$self->{CONNECTIONS}->{sids}->{$sid}->{tree}} < 1) {
+    push @{$self->{CONNECTIONS}->{sids}->{$sid}->{tree}}, $CLOSED;
 
-    if($self->{TREE}->[0] eq "stream:error") {
-      $self->{STREAMERROR} = $self->{TREE}[1]->[2];
+    if($self->{CONNECTIONS}->{sids}->{$sid}->{tree}->[0] eq "stream:error") {
+      $self->{CONNECTIONS}->{sids}->{$sid}->{streamerror} = 
+	$self->{CONNECTIONS}->{sids}->{$sid}->{tree}[1]->[2];
     } else {
-      my @tree = @{$self->{TREE}};
-      $self->{TREE} = [];
-      &{$self->{CB}{node}}(@tree);
+      my @tree = @{$self->{CONNECTIONS}->{sids}->{$sid}->{tree}};
+      $self->{CONNECTIONS}->{sids}->{$sid}->{tree} = [];
+      &{$self->{CB}->{node}}($sid,@tree);
     }
   } else {
-    push @{$self->{TREE}[$#{$self->{TREE}}]}, $CLOSED;
+    push @{$self->{CONNECTIONS}->{sids}->{$sid}->{tree}[$#{$self->{CONNECTIONS}->{sids}->{$sid}->{tree}}]}, $CLOSED;
   }
 }
 
@@ -945,8 +1207,9 @@ sub _handle_close {
 ##############################################################################
 sub _node {
   my $self = shift;
+  my $sid = shift;
   my @PassedNode = @_;
-  push(@{$self->{NODES}},\@PassedNode);
+  push(@{$self->{CONNECTIONS}->{sids}->{$sid}->{nodes}},\@PassedNode);
 }
 
 1;

@@ -1,3 +1,8 @@
+1.09
+====
+  - Updated Connect to handle changing the values of the to and from
+    attributes directly from the function call.  (Useful for proxying.)
+
 1.08
 ====
   - Added boiler plate comments for the LGPL.

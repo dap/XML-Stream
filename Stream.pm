@@ -63,18 +63,24 @@ XML::Stream - Creates and XML Stream connection and parses return data
 
   Connect(hostname=>string,       - opens a tcp connection to the 
           port=>integer,            specified server and sends the proper 
-          myhostname=>string,       opening XML Stream tag.  hostname, 
-          namespace=>array,         port, and namespace are required.  
-          namespaces=>array,        namespaces allows you to use 
-          connectiontype=>string)   XML::Stream::Namespace objects. 
-                                    myhostname should not be needed but 
-                                    if the module cannot determine your 
-                                    hostname properly (check the debug 
-                                    log), set this to the correct value, 
-                                    or if you want the other side of the 
-                                    stream to think that you are someone
-                                    else.  The type determines the kind
-                                    of connection that is made:
+          to=>string,               opening XML Stream tag.  hostname, 
+          from=>string,             port, and namespace are required.  
+          myhostname=>string,       namespaces allows you to use 
+          namespace=>string,        XML::Stream::Namespace objects.
+          namespaced=>array,        to is needed if you want the stream
+          connectiontype=>string)   to attribute to be something other
+                                    than the hostname you are connecting
+                                    to.  from is needed if you want the
+                                    stream from attribute to be something
+                                    other than the hostname you are
+                                    connecting from.  myhostname should
+                                    not be needed but if the module cannot
+                                    determine your hostname properly (check
+                                    the debug log), set this to the correct
+                                    value, or if you want the other side
+                                    of the  stream to think that you are
+                                    someone else.  The type determines
+                                    the kind of connection that is made:
                                       "tcpip"    - TCP/IP (default)
                                       "stdinout" - STDIN/STDOUT
 
@@ -185,7 +191,7 @@ if ($] >= 5.006) {
   $UNICODE = 0;
 }
 
-$VERSION = "1.08";
+$VERSION = "1.09";
 
 use XML::Stream::Namespace;
 ($XML::Stream::Namespace::VERSION < $VERSION) &&
@@ -396,8 +402,10 @@ sub Connect {
   $stream .= 'xmlns:stream="http://etherx.jabber.org/streams" ';
   $stream .= 'xmlns="'.$self->{SERVER}{namespace}.'" ';
   if ($self->{SERVER}{connectiontype} eq "tcpip") {
-    $stream .= 'to="'.$self->{SERVER}{hostname}.'" ';
-    $stream .= 'from="'.$self->{SERVER}{myhostname}.'" ' if ($self->{SERVER}{myhostname} ne "");
+    $stream .= 'to="'.$self->{SERVER}{hostname}.'" ' unless exists($self->{SERVER}{to});
+    $stream .= 'to="'.$self->{SERVER}{to}.'" ' if exists($self->{SERVER}{to});
+    $stream .= 'from="'.$self->{SERVER}{myhostname}.'" ' if (!exists($self->{SERVER}{from}) && ($self->{SERVER}{myhostname} ne ""));
+    $stream .= 'from="'.$self->{SERVER}{from}.'" ' if exists($self->{SERVER}{from});
     $stream .= 'id="'.$self->{SERVER}{id}.'"' if (exists($self->{SERVER}{id}) && ($self->{SERVER}{id} ne ""));
     my $namespaces = "";
     my $ns;
@@ -481,6 +489,7 @@ sub Process {
   my($timeout) = @_;
   $timeout = "" if !defined($timeout);
   
+  $self->debug(2,"Process: timeout($timeout)");
   #---------------------------------------------------------------------------
   # We need to keep track of what's going on in the function and tell the
   # outside world about it so let's return something useful:
@@ -492,6 +501,9 @@ sub Process {
   #---------------------------------------------------------------------------
   my ($status) = 0;
   
+  $self->debug(2,"Process: status($status)");
+  $self->debug(2,"Process: connection_status($self->{STATUS})");
+
   #---------------------------------------------------------------------------
   # Make sure the connection is active.
   #---------------------------------------------------------------------------
@@ -504,12 +516,17 @@ sub Process {
   my $block = 1;
   my $timeStart = time();
   while($block == 1) {
+    $self->debug(3,"Process: let's wait for data");
     if($self->{SERVER}{select}->can_read(0)) {
+      $self->debug(3,"Process: there's something to read");
       my $buff;
       while($self->{SERVER}{select}->can_read(0)) {
+	$self->debug(3,"Process: read");
 	$status = 1;
 	$self->{STATUS} = -1 if (!defined($buff = $self->Read()));
+	$self->debug(3,"Process: connection_status($self->{STATUS})");
 	return unless($self->{STATUS} == 1);
+	$self->debug(3,"Process: parse($buff)");
 	return unless($self->ParseStream($buff) == 1);
       }
       $block = 0;
@@ -524,14 +541,17 @@ sub Process {
     } else {
       select(undef,undef,undef,.25);
     }
+    $self->debug(3,"Process: timeout($timeout)");
     
     $block = 1 if $self->{SERVER}{select}->can_read(0);
     $self->Send(" ") if ((time - $self->{KEEPALIVE}) > 60);
+    $self->debug(3,"Process: block($block)");
   }
 
   #---------------------------------------------------------------------------
   # If the Select has an error then shut this party down.
   #---------------------------------------------------------------------------
+  $self->debug(2,"Process: has_error(",$self->{SERVER}{select}->has_error(0),")");
   return if($self->{SERVER}{select}->has_error(0));
   
   #---------------------------------------------------------------------------

@@ -1,4 +1,4 @@
-XML::Stream v1.08
+XML::Stream v1.09
 
 This module provides you with access to XML Streams.  An XML Stream
 is just that.  A stream of XML over a connection between two computers.

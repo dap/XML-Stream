@@ -1,3 +1,10 @@
+1.08
+====
+  - Added boiler plate comments for the LGPL.
+  - Added code to Send to check if the connection was lost.  This
+    fixes a Broken Pipe error that I was seeing when the program tried
+    to write to a socket that was closed.
+
 1.07
 ====
   - Added code to handle not only connecting over TCP/IP but over

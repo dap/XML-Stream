@@ -12,6 +12,6 @@ WriteMakefile(
 	      'PREREQ_PM' => {
 			      'XML::Parser' => 0 
 			     },
-	      'VERSION'   => '1.07',
+	      'VERSION'   => '1.08',
 	      'dist'      => { 'COMPRESS' => 'gzip --best' }
 	     );

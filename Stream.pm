@@ -1,3 +1,25 @@
+##############################################################################
+#
+#  This library is free software; you can redistribute it and/or
+#  modify it under the terms of the GNU Library General Public
+#  License as published by the Free Software Foundation; either
+#  version 2 of the License, or (at your option) any later version.
+#
+#  This library is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+#  Library General Public License for more details.
+#
+#  You should have received a copy of the GNU Library General Public
+#  License along with this library; if not, write to the
+#  Free Software Foundation, Inc., 59 Temple Place - Suite 330,
+#  Boston, MA  02111-1307, USA.
+#
+#  Jabber
+#  Copyright (C) 1998-1999 The Jabber Team http://jabber.org/
+#
+##############################################################################
+
 package XML::Stream;
 
 =head1 NAME
@@ -163,7 +185,7 @@ if ($] >= 5.006) {
   $UNICODE = 0;
 }
 
-$VERSION = "1.07";
+$VERSION = "1.08";
 
 use XML::Stream::Namespace;
 ($XML::Stream::Namespace::VERSION < $VERSION) &&
@@ -387,11 +409,6 @@ sub Connect {
   $stream .= ">";
 
   #---------------------------------------------------------------------------
-  # Then we send the opening handshake.
-  #---------------------------------------------------------------------------
-  $self->Send($stream) || return;
-
-  #---------------------------------------------------------------------------
   # Create the XML::Parser and register our callbacks
   #---------------------------------------------------------------------------
   my $expat =
@@ -402,6 +419,11 @@ sub Connect {
     if ($self->{SERVER}{connectiontype} eq "tcpip");
   $self->{SERVER}{select} = new IO::Select(*STDIN)
     if ($self->{SERVER}{connectiontype} eq "stdinout");
+
+  #---------------------------------------------------------------------------
+  # Then we send the opening handshake.
+  #---------------------------------------------------------------------------
+  $self->Send($stream) || return;
 
   #---------------------------------------------------------------------------
   # Before going on let's make sure that the server responded with a valid
@@ -636,12 +658,35 @@ sub GetSock {
 sub Send {
   my $self = shift;
   $self->debug(1,"Send: (@_)");
-  if ($self->{SERVER}{connectiontype} eq "tcpip") {
-    $self->{SERVER}{sock}->print(@_) || return;
+
+  return if ($self->{STATUS} == -1);
+
+  if ($self->{SERVER}{select}->can_write(0)) {
+    my $string = join("",@_);
+    my $written;
+    my $offset = 0;
+    my $length = length($string);
+    while ($length) {
+      $written = $self->{SERVER}{sock}->syswrite($string,$length,$offset)
+	if ($self->{SERVER}{connectiontype} eq "tcpip");
+      $written = syswrite($self->{STDOUT},$string,$length,$offset)
+	if ($self->{SERVER}{connectiontype} eq "stdinout");
+      
+      return unless defined($written);
+      
+      $length -= $written;
+      $offset += $written;
+    }
   }
-  if ($self->{SERVER}{connectiontype} eq "stdinout") {
-    $self->{STDOUT}->print("@_\n");
-  }
+
+  return if($self->{SERVER}{select}->has_error(0));
+
+#  if ($self->{SERVER}{connectiontype} eq "tcpip") {
+#    $self->{SERVER}{sock}->print(@_) || return;
+#  }
+#  if ($self->{SERVER}{connectiontype} eq "stdinout") {
+#    $self->{STDOUT}->print("@_\n");
+#  }
   $self->{KEEPALIVE} = time;
   return 1;
 }
@@ -663,7 +708,7 @@ sub Read {
   $self->debug(1,"Read: ($buff)");
   $self->{KEEPALIVE} = time unless (($buff eq "") || ($status == 0));
   return $buff unless ($status == 0);
-  $self->debug(1,"Read: ERROR");
+  $self->debug(1,"Read: ERROR");  
   return;
 }
 

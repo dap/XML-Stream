@@ -1,5 +1,12 @@
-0.1
-=====
+0.1b
+====
+  - Added XML::Stream::Namespace to make writting Perl modules for other
+    namepsaces possible.  (This is highly alpha...)
+  - Added Disconnect function to send closing tag and shut the stream down.
+  - Added documentation list of methods in Stream.pm.
+
+0.1a
+====
   - First version.
   - Supports connecting to a server, opening a stream, and receiving from that
     stream.

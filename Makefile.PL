@@ -6,7 +6,8 @@ use ExtUtils::MakeMaker;
 WriteMakefile(
 	      'NAME'	  => 'XML::Stream',
 	      'PM' 	  => {
-			      'Stream.pm' => '$(INST_LIBDIR)/Stream.pm'
+			      'Stream.pm' => '$(INST_LIBDIR)/Stream.pm',
+			      'Stream/Namespace.pm' => '$(INST_LIBDIR)/Stream/Namespace.pm'
 			     },
 	      'PREREQ_PM' => {
 			      'XML::Parser' => 0 

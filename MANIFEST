@@ -2,3 +2,4 @@ MANIFEST
 MANIFEST.SKIP
 Makefile.PL
 Stream.pm
+Stream/Namespace.pm

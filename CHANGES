@@ -1,0 +1,5 @@
+0.1
+=====
+  - First version.
+  - Supports connecting to a server, opening a stream, and receiving from that
+    stream.

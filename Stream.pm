@@ -1,0 +1,726 @@
+package XML::Stream;
+
+=head1 NAME
+
+XML::Stream - Creates and XML Stream connection and parses return data
+
+=head1 SYNOPSIS
+
+  XML::Stream is an attempt at solidifying the use of XML via streaming.
+
+=head1 DESCRIPTION
+
+  This modle provides the user with methods to connect to a remote server,
+  send a stream of XML to the server, and receive/parse an XML stream from
+  the server.  It is primarily based work for the Etherx XML router  
+  developed by the Jabber Development Team.  For more information about
+  this project visit http://etherx.jabber.org/stream/.
+
+  XML::Stream gives the user the ability to define a central callback
+  that will be used to handle the tags received from the server.  These
+  tags are passed in the format of an XML::Parser::Tree object.  After
+  the closing tag of an object is seen, the tree is finished and passed
+  to the call back funtion.  What the user does with it from there is up
+  to them.
+
+  For a detailed description of how this module works, and about the data
+  structure that it returns, please view the source of Stream.pm and 
+  look at the detailed description at the end of the file.
+
+=head1 EXAMPLES
+
+  ##########################
+  # simple example
+
+  use XML::Stream;
+
+  $stream = new XML::Stream;
+
+  $stream->Connect(name => "jabber.org", 
+                   port => 5222, 
+                   namespace => "jabber:client") || die $!;
+
+  while($node = $stream->Process())
+  {
+    # do something with $node
+  }
+
+
+  ###########################
+  # example using a handler
+
+  use XML::Stream;
+
+  $stream = new XML::Stream;
+  $stream->OnNode(\&noder);
+  $stream->Connect(name => "jabber.org",
+		   port => 5222,
+		   namespace => "jabber:client",
+		   timeout => undef) || die $!;
+
+  # Blocks here forever, noder is called for incoming 
+  # packets when they arrive.
+  $stream->Process();
+
+  sub noder
+  {
+    my $node = shift;
+    # do something with $node
+  }
+
+=head1 AUTHOR
+
+Tweaked, tuned, and brightness changes by Ryan Eatmon, reatmon@ti.com
+Colorized, and Dolby Surround sound added by Thomas Charron,
+tcharron@jabber.org
+By Jeremie in October of 1999 for http://etherx.jabber.org/streams/
+
+=head1 COPYRIGHT
+
+This module is free software; you can redistribute it and/or modify
+it under the same terms as Perl itself.
+
+=cut
+
+require 5.003;
+use strict;
+use Carp;
+use IO::Socket;
+use IO::Select;
+use XML::Parser;
+use vars qw($VERSION);
+
+$VERSION = "0.1";
+
+sub new {
+  my $self = { };
+
+  #---------------------------------------------------------------------------
+  # Setup the defaults that the module will work with.
+  #---------------------------------------------------------------------------
+  $self->{SERVER} = {name => "",
+		     port => "", 
+		     sock => 0, 
+		     namespace => "", 
+		     timeout => 0};
+  
+  #---------------------------------------------------------------------------
+  # We are only going to use one callback, let the user call other callbacks
+  # on his own.
+  #---------------------------------------------------------------------------
+  $self->{NODE} = sub { $self->_node(@_) };
+
+  #---------------------------------------------------------------------------
+  # Set the default STATUS so that we can keep track of it throughout the
+  # session.  1 = no errors, -1 = error from handlers, 0 = no data has been
+  # recevied yet.
+  #---------------------------------------------------------------------------
+  $self->{STATUS} = 0;
+
+  #---------------------------------------------------------------------------
+  # A storage place for wen we don't have a callback registered and we need to
+  # stockpile the nodes we receive until Process is called and we return them.
+  #---------------------------------------------------------------------------
+  $self->{NODES} = ();
+
+  bless($self);
+  return $self;
+}
+
+
+##############################################################################
+#
+# OnNode - registers a callback for when a node is recevied.  This is used so
+#          that the user can write his own functions to handle the incoming
+#          data.  If one is not defined then the internal callback _node is
+#          used.
+#
+##############################################################################
+sub OnNode {
+  my $self = shift;
+  $self->{NODE} = shift;
+}
+
+
+##############################################################################
+#
+# GetRoot - returns teh hash of attributes for the root <stream:stream/> tag
+#           so that any attrbutes returned can be accessed.  from and any
+#           xmlns:foobar might be important.
+#
+##############################################################################
+sub GetRoot {
+  my $self = shift;
+  return $self->{ROOT};
+}
+
+
+##############################################################################
+#
+# GetSock - returns the Socket so that an outside function can access it if
+#           desired.
+#
+##############################################################################
+sub GetSock {
+  my $self = shift;
+  return $self->{SERVER}{sock};
+}
+
+
+##############################################################################
+#
+# Send - Takes the data string and sends it to the server
+#
+##############################################################################
+sub Send {
+  my $self = shift;
+  $self->{SERVER}{sock}->print(@_);
+}
+
+
+##############################################################################
+#
+# Connect - starts the stream by connecting to the server, sending the opening
+#           stream tag, and then waiting for a response and verifying that it
+#           is correct for this stream.  Server name, port, and namespace are
+#           required otherwise we don't know where to send the stream to...
+#
+##############################################################################
+sub Connect {
+  my $self = shift;
+  while($#_ >= 0) { $self->{SERVER}{ lc pop(@_) } = pop(@_); }
+
+  #---------------------------------------------------------------------------
+  # Check some things that we have to know in order get the connection up
+  # and running.  Server name, port number, namespace, etc...
+  #---------------------------------------------------------------------------
+  if ($self->{SERVER}{name} eq "") { 
+    $! = "Server name not specified";
+    return undef;
+  }
+  if ($self->{SERVER}{port} eq "") {
+    $! = "Server port not specified";
+    return undef;
+  }
+  if ($self->{SERVER}{namespace} eq "") {
+    $! = "Namespace not specified";
+    return undef;
+  }
+  
+  #---------------------------------------------------------------------------
+  # Open the connection to the listed server and port.  If that fails then
+  # abort ourselves and let the user check $! on his own.
+  #---------------------------------------------------------------------------
+  $self->{SERVER}{sock} = 
+    new IO::Socket::INET(PeerAddr => $self->{SERVER}{name}, 
+			 PeerPort => $self->{SERVER}{port}, 
+			 Proto => 'tcp');
+  return undef unless $self->{SERVER}{sock};
+  $self->{SERVER}{sock}->autoflush(1);
+  
+  #---------------------------------------------------------------------------
+  # Now let's send the opening handshake.
+  #---------------------------------------------------------------------------
+  $self->{SERVER}{sock}->print(<<EOF) || return undef;
+<?xml version="1.0"?>
+<stream:stream xmlns:stream="http://etherx.jabber.org/streams" to="$self->{SERVER}{name}" xmlns="$self->{SERVER}{namespace}">
+EOF
+  # ToDo: Generalize the opening stream
+
+  #---------------------------------------------------------------------------
+  # Create the XML::Parser and register our callbacks
+  #---------------------------------------------------------------------------
+  my $expat = 
+    new XML::Parser(Handlers => { Start => sub { $self->_handle_root(@_) }, 
+				  End   => sub { $self->_handle_close(@_) }, 
+				  Char  => sub { $self->_handle_cdata(@_) }
+				});
+  $self->{SERVER}{parser} = $expat->parse_start();
+  $self->{SERVER}{select} = new IO::Select($self->{SERVER}{sock});
+
+  #---------------------------------------------------------------------------
+  # Before going on let's make sure that the server responded with a valid
+  # root tag and that the stream is open.
+  #---------------------------------------------------------------------------
+  my ($buff, $timeout);
+  while($self->{STATUS} == 0) {
+    if($self->{SERVER}{select}->can_read(1)) {
+      $self->{SERVER}{sock}->sysread($buff,1024);
+      $self->{SERVER}{parser}->parse_more($buff);
+      # ToDo: we need to try/catch expat parsing errors here, no?
+    } else {
+      $timeout++;
+      return undef if($timeout > $self->{SERVER}{timeout});
+    }
+    
+    return undef if($self->{SERVER}{select}->has_error(0));
+  }
+  if($self->{STATUS} != 1) {
+    return undef;
+  }
+  return 1;
+}
+
+
+##############################################################################
+#
+# Process - checks for data on the socket and returns a status code depending
+#           on if there was data or not.  If a timeout is not defined in the
+#           call then the timeout defined in Connect() is used.  If a timeout
+#           of 0 is used then the call blocks until it gets some data,
+#           otherwise it returns after the timeout period.
+#
+##############################################################################
+# checks for data on the socket, uses timeout passed to Connect()
+sub Process {
+  my $self = shift;
+  my($timeout) = @_;
+  my ($buff);
+  my ($status) = 0;
+  
+  #---------------------------------------------------------------------------
+  # Make sure the connection is active.
+  #---------------------------------------------------------------------------
+  return undef unless($self->{STATUS} == 1);
+  
+  #---------------------------------------------------------------------------
+  # Use the proper timeout, either the one defined here or in the default.
+  # Either block until there is data, or wait a certain period of time and
+  # then return control to the user.
+  #---------------------------------------------------------------------------
+  if($self->{SERVER}{select}->can_read($timeout eq "" ? $self->{SERVER}{timeout} : $timeout)) {
+    $status = 1;
+    $self->{SERVER}{sock}->sysread($buff,1024);
+    $self->{SERVER}{parser}->parse_more($buff);
+    return undef unless($self->{STATUS} == 1);
+  }
+  
+  #---------------------------------------------------------------------------
+  # If the Select has an error then shut this party down.
+  #---------------------------------------------------------------------------
+  return undef if($self->{SERVER}{select}->has_error(0));
+  
+  #---------------------------------------------------------------------------
+  # If there are XML::Parser::Tree objects that have not been collected return
+  # those, otherwise return the status which indicates if nodes were read or 
+  # not.
+  #---------------------------------------------------------------------------
+  if($#{$self->{NODES}} > -1) {
+    return shift @{$self->{NODES}};
+  } else {
+    return $status; # signal that we're ok
+  }
+}
+
+
+##############################################################################
+#
+# _handle_root - handles a root tag and checks that it is a stream:stream tag
+#                with the proper namespace.  If not then it sets the STATUS to
+#                -1 and let's the outer code know that an error occured.  Then
+#                it changes the Start tag handler to _handle_element.
+#
+##############################################################################
+sub _handle_root {
+  my $self = shift;
+  my ($expat, $tag, %att) = @_;
+
+  #---------------------------------------------------------------------------
+  # Make sure we are receiving a valid stream on the same namespace.
+  #---------------------------------------------------------------------------
+  $self->{STATUS} = 
+    (($tag eq "stream:stream") && 
+     ($att{'xmlns'} eq $self->{SERVER}{namespace})) ? 1 : -1;
+
+  
+  #---------------------------------------------------------------------------
+  # Get the root tag attributes and save them for later.  You never know when
+  # you'll need to check the namespace oro the from attributes sent by the 
+  # server.
+  #---------------------------------------------------------------------------
+  $self->{ROOT} = %att;
+
+  #---------------------------------------------------------------------------
+  # Now that we have gotten a root tag, let's look for the tags that make up
+  # the stream.  Change the handler for a Start tag to another function.
+  #---------------------------------------------------------------------------
+  $expat->setHandlers(Start => sub { $self->_handle_element(@_)});
+}
+
+
+##############################################################################
+#
+# _handle_element - handles the main tag elements sent from the server.  On
+#                   an open tag it creates a new XML::Parser::Tree so that
+#                   _handle_cdata and _handle_element can add data and tags
+#                   to it later.
+#
+##############################################################################
+sub _handle_element {
+  my $self = shift;
+  my ($expat, $tag, %att) = @_;
+  my @NEW;
+  if($#{$self->{TREE}} < 0) {
+    push @{$self->{TREE}}, $tag;
+  } else {
+    push @{ $self->{TREE}[ $#{$self->{TREE}}]}, $tag;
+  }
+  push @NEW, \%att;
+  push @{$self->{TREE}}, \@NEW;
+}
+
+
+##############################################################################
+#
+# _handle_cdata - handles the CDATA that is encountered.  Also, in the spirit
+#                 of XML::Parser::Tree it any sequential CDATA into one tag.
+#
+##############################################################################
+sub _handle_cdata {
+  my $self = shift;
+  my ($expat, $cdata) = @_;
+  my $pos = $#{$self->{TREE}};
+  if ($pos > 0 && $self->{TREE}[$pos - 1] eq "0") {
+    $self->{TREE}[$pos - 1] .= $cdata;
+  } else {
+    push @{$self->{TREE}[$#{$self->{TREE}}]}, 0;
+    push @{$self->{TREE}[$#{$self->{TREE}}]}, $cdata;
+  }	
+}
+
+
+##############################################################################
+# 
+# _handle_close - when we see a close tag we need to pop the last element from
+#                 the list and push it onto the end of the previous element.
+#                 This is how we build our hierarchy.
+#
+##############################################################################
+sub _handle_close {
+  my $self = shift;
+  my ($expat, $tag) = @_;
+  
+  my $CLOSED = pop @{$self->{TREE}};
+  
+  if($#{$self->{TREE}} < 1) {
+    push @{$self->{TREE}}, $CLOSED;
+    &{$self->{NODE}}(@{$self->{TREE}});
+    $self->{TREE} = [];
+  } else {
+    push @{$self->{TREE}[$#{$self->{TREE}}]}, $CLOSED;
+  }
+}
+
+
+##############################################################################
+#
+# _node - internal callback for nodes.  All it does is place the nodes in a
+#         list so that Process() can return them later.
+#
+##############################################################################
+sub _node {
+  my $self = shift;
+  my @PassedNode = @_;
+  push @{$self->{NODES}}, ${@PassedNode};
+} 
+
+1;
+
+
+
+
+
+
+
+
+
+##############################################################################
+#
+# XML::Stream Tree Building 101
+#
+#   In order to not reinvent the wheel, XML::Stream uses the XML::Parser::Tree
+# object as the data structure it passes around and stores.  Two things need
+# to be covered in order to understand what the data looks like when you get
+# it from XML::Stream.
+#
+#
+#
+# Section 1:  What does an XML::Parser::Tree object look like?
+#
+#   The original documentation for XML::Parser::Tree can be a little hard to
+# understand so we will go over the structure here for completeness.  The
+# that is built is essiantially a big nested array.  This guarantees that you
+# see the tags in the order receved from the stream, and that the nesting of
+# tags is maintained.  The actual structure of the tree is complicated so
+# let's cover an example:
+#
+#   <A n='1>First<B n='2' m='bob'>Second</B>Third<C/></A>
+#
+#   What we are working with is a nested <B/> tag inside the CDATA of <A/>.
+# There are attributes on boths tags that must be stored.  To do this we use
+# an array.  The first element of the array is the root tag, or A.
+#
+#   [ 'A' ]
+#
+#   The second element is a list of all the things contained in <A/>.
+#
+#   [ 'A', [ ] ]
+#
+#   That new list is recursively built as you go down the hierarchy, so let's
+# examine the structure.  The first element of that new list is a hash of
+# key/value pairs that represent the attributes of the tag you are looking
+# at.  In the case of the root tag <A/> the hash would be { 'n' => '1' }.  So
+# adding that to the list we get:
+#
+#   [ 'A', [ { 'n' => '1' } ] ]
+#
+#   Now, the rest of the new list is a set of two elements added at a time.
+# Either a tag name followed by a list that reprents the new tag, or a 
+# "0" (zero) followed by a string.  This might be confusing so let's go to
+# the example.  As we parse the <A/> tag we see the string "First".  So
+# according to the rule we add a "0" and "First" to the list:
+#
+#   [ 'A', [ { 'n' => '1' }, 0, "First" ] ]
+#
+#   The next element is the <B/> tag.  So the rules says that we add the
+# tag and then a list that contains that tag:
+#
+#   [ 'A', [ { 'n' => '1' }, 0, "First", 'B', [ ] ] ]
+#
+#   Parsing the <B/> tag we see an attributes n = '2' and m = 'bob.  So
+# those go into a hash and that hash becomes the first element in the list
+# for B:
+#
+#   [ 
+#     'A', [ { 'n' => '1' }, 
+#            0, "First", 
+#            'B', [ { 'n' => '2', 'm' => 'bob' } ]
+#          ] 
+#   ]
+#
+#   Next we see that <B/> contains the CDATA "Second" so that goes into
+# the list for B:
+#
+#   [ 
+#     'A', [ { 'n' => '1' }, 
+#            0, "First", 
+#            'B', [ { 'n' => '2', 'm' => 'bob' } 
+#                   0, "Sceond"
+#                 ]
+#          ] 
+#   ]
+#
+#   <B/> closes and we leave this list and return to the list for <A/>.
+# The next element there is CDATA so add a '0' and "Third" onto the list
+# for A:
+#
+#   [ 
+#     'A', [ { 'n' => '1' }, 
+#            0, "First", 
+#            'B', [ { 'n' => '2', 'm' => 'bob' } 
+#                   0, "Sceond"
+#                 ]
+#            0, "Third"
+#          ] 
+#   ]
+#
+#   Now we see another tag, <C/>.  So we add C and a list onto the A's list:
+#
+#   [ 
+#     'A', [ { 'n' => '1' }, 
+#            0, "First", 
+#            'B', [ { 'n' => '2', 'm' => 'bob' } 
+#                   0, "Sceond"
+#                 ]
+#            0, "Third",
+#            'C', [ ]
+#          ] 
+#   ]
+#
+#   Parsing <C/> we see that it has no attributes so we add an empty hash
+# to the list for C:
+#
+#   [ 
+#     'A', [ { 'n' => '1' }, 
+#            0, "First", 
+#            'B', [ { 'n' => '2', 'm' => 'bob' } 
+#                   0, "Sceond"
+#                 ]
+#            0, "Third",
+#            'C', [ { } ]
+#          ] 
+#   ]
+#
+#   Next we see that <C/> contains no other data and ends in a />.  This
+# means that the tag is finished and contains no data.  So close C and go
+# back to <A/>.  There is no other data in A so we close <A/> and we have
+# our finished tree:
+#
+#   [ 
+#     'A', [ { 'n' => '1' }, 
+#            0, "First", 
+#            'B', [ { 'n' => '2', 'm' => 'bob' } 
+#                   0, "Sceond"
+#                 ]
+#            0, "Third",
+#            'C', [ { } ]
+#          ] 
+#   ]
+#
+#
+#
+# Section II:  How do we build the XML::Parser::Tree?
+#
+#   For those who are interested in how we build a tree read on, for those
+# that got enough out of the previous section, read anyway.
+#
+#   Recursion would be too difficult to do in this linear problem so we
+# looked at the problem and engineered a way to use a single list to build
+# the structure.  Everytime a new tag is encountered a new list is added to
+# end of the main list.  When that list closes it is removed from the main
+# list and then added onto the end of the previous element in the list,
+# which is usually another list.  In other words:
+#
+#   The current list looks like this:
+#
+#   [aaa]
+#
+#   We see a new tag and make a new list:
+#
+#   [aaa], [bbb]
+#
+#   Populate that list and then close it.  WHen we close we remove from the
+# list and make it the last element in the previous list elements list.  
+# Confused?  Watch:
+#
+#   [aaa], [bbb] -->  [aaa, [bbb] ]
+#
+#   As we "recurse" the hierarchy and close tags we push the new list back
+# up to the previous list element and create the proper nesting.
+#
+#   Let's go over the same example from Section I.
+#
+#   <A n='1>First<B n='2' m='bob'>Second</B>Third<C/></A>
+#
+#   We start and push A on the list:
+#
+#   [ 'A' ]
+#
+#   Next we create a new list for the <A/> tag and populate the attribute
+# hash:
+#
+#   [ 'A',
+#     [ { 'n'=>'1' } ]
+#   ]
+#
+#   Now we see the CDATA:
+#
+#   [ 'A',
+#     [ { 'n'=>'1' }, 0, "First" ]
+#   ]
+#
+#   Next it's the <B/> tag, so push B on the list and make a new list on
+# the end of the main list:
+#
+#   [ 'A', 
+#     [ { 'n'=>'1' }, 0, "First", 'B' ], 
+#     [ ]
+#   ]
+#
+#   Parsing the <B/> tag we see that is has attributes and CDATA:
+#
+#   [ 'A', 
+#     [ { 'n'=>'1' }, 0, "First", 'B' ], 
+#     [ {'n'=>'2','m'=>"bob"}, 0, "Second" ]
+#   ]
+#
+#   Now <B/> closes and the magic begins...  With the closing of <B/> we
+# pop the last element off the list.  Then we take that element and push it
+# onto the last element of the main list.  So we aren't pushing it onto the
+# main list, but onto the last element of the main list:
+#
+#   Popped value: [ {'n'=>'2','m'=>"bob"}, 0, "Second" ]
+#
+#   List:         [ 'A', 
+#                   [ { 'n'=>'1' }, 0, "First", 'B' ]
+#                 ]
+#
+#   Push value on last element of list:
+#   [ 'A', 
+#     [ { 'n'=>'1' }, 0, "First", 'B', [ {'n'=>'2','m'=>"bob"}, 0, "Second" ] ]
+#   ]
+#  
+#   Now we see a CDATA and push that onto the last element in the list:
+#
+#   [ 'A', 
+#     [ { 'n'=>'1' }, 
+#       0, "First", 
+#       'B', [ {'n'=>'2','m'=>"bob"}, 
+#              0, "Second" 
+#            ],
+#       0, "Third"
+#     ]
+#   ]
+#  
+#   Finally we see the <C/> tag, so a 'C' is pushed onto the list, and then
+# a new list is created to contain the new tag:
+#
+#   [ 'A', 
+#     [ { 'n'=>'1' }, 
+#       0, "First", 
+#       'B', [ {'n'=>'2','m'=>"bob"}, 
+#              0, "Second" 
+#            ],
+#       0, "Third",
+#       'C'
+#     ],
+#     [ ]
+#   ]
+#  
+#   <C/> no attributes so an empty hash is pushed onto the list:
+#
+#   [ 'A', 
+#     [ { 'n'=>'1' }, 
+#       0, "First", 
+#       'B', [ {'n'=>'2','m'=>"bob"}, 
+#              0, "Second" 
+#            ],
+#       0, "Third",
+#       'C'
+#     ],
+#     [ { } ]
+#   ]
+#
+#   <C/> contains no data so nothing is to be done there.  The tag closes
+# and we do the magic again.  Pop the last element off the main list and 
+# push it onto the previous element's list:
+#
+#   [ 'A', 
+#     [ { 'n'=>'1' }, 
+#       0, "First", 
+#       'B', [ {'n'=>'2','m'=>"bob"}, 
+#              0, "Second" 
+#            ],
+#       0, "Third",
+#       'C', [ { } ]
+#     ]
+#   ]
+#
+#   Now <A/> closes so we pop the last element off the main list and push
+# is onto a list with the previous element, which is the string 'A':
+#
+#   [ 'A', 
+#     [ { 'n'=>'1' }, 
+#       0, "First", 
+#       'B', [ {'n'=>'2','m'=>"bob"}, 
+#              0, "Second" 
+#            ],
+#       0, "Third",
+#       'C', [ { } ]
+#     ]
+#   ]
+#
+#   And voila!  The tree is complete.  We now call the callback function,
+# pass it the tree, and then reset the tree for the next tag to be parsed.
+#
+##############################################################################

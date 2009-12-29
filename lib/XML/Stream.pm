@@ -1160,7 +1160,8 @@ sub OpenStream
         $self->{SOCKETS}->{*STDIN} = $sid;
     }
 
-    delete($self->{SIDS}->{$currsid});
+    delete($self->{SIDS}->{$currsid})
+        unless $currsid eq $sid;
 
     if (exists($self->GetRoot($sid)->{version}) &&
         ($self->GetRoot($sid)->{version} ne ""))

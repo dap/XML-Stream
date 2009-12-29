@@ -36,7 +36,7 @@ XML::Stream - Creates and XML Stream connection and parses return data
   server, send a stream of XML to the server, and receive/parse an XML
   stream from the server.  It is primarily based work for the Etherx XML
   router developed by the Jabber Development Team.  For more information
-  about this project visit http://etherx.jabber.org/stream/.
+  about this project visit http://xmpp.org/protocols/streams/.
 
   XML::Stream gives the user the ability to define a central callback
   that will be used to handle the tags received from the server.  These

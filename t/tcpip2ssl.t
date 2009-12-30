@@ -15,7 +15,7 @@ SKIP:
     SKIP:
     {
 
-        my $status = $stream->Connect(hostname=>"obelisk.net",
+        my $status = $stream->Connect(hostname=>"jabber.org",
                                       port=>5223,
                                       namespace=>"jabber:client",
                                       connectiontype=>"tcpip",

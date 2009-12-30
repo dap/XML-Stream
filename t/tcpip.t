@@ -9,10 +9,10 @@ isa_ok( $stream, "XML::Stream" );
 
 SKIP:
 {
-    my $sock = IO::Socket::INET->new(PeerAddr=>'obelisk.net:5222');
+    my $sock = IO::Socket::INET->new(PeerAddr=>'jabber.org:5222');
     skip "Cannot open connection (maybe a firewall?)",1 unless defined($sock);
     
-    my $status = $stream->Connect(hostname=>"obelisk.net",
+    my $status = $stream->Connect(hostname=>"jabber.org",
                                   port=>5222,
                                   namespace=>"jabber:client",
                                   connectiontype=>"tcpip",

@@ -255,6 +255,7 @@ use Authen::SASL;
 use MIME::Base64;
 use utf8;
 use Encode;
+use XML::Stream::IO::Select::Win32;
 
 $SIG{PIPE} = "IGNORE";
 
@@ -1211,10 +1212,24 @@ sub OpenFile
                         }
                  );
 
-    $self->{SIDS}->{newconnection}->{select} =
-        new IO::Select($self->{SIDS}->{newconnection}->{sock});
+    # select is not implemented for filehandles on win32 (see perlport)
+    # so we fake it out using XML::Stream::IO::Select::Win32
+    if ( $^O =~ /mswin32/i ) {
+        $self->{SIDS}->{newconnection}->{select}
+            = new XML::Stream::IO::Select::Win32(
+                $self->{SIDS}->{newconnection}->{sock});
 
-    $self->{SELECT} = new IO::Select($self->{SIDS}->{newconnection}->{sock});
+        $self->{SELECT}
+            = new XML::Stream::IO::Select::Win32(
+                $self->{SIDS}->{newconnection}->{sock});
+    }
+    else {
+        $self->{SIDS}->{newconnection}->{select}
+            = new IO::Select($self->{SIDS}->{newconnection}->{sock});
+
+        $self->{SELECT}
+            = new IO::Select($self->{SIDS}->{newconnection}->{sock});
+    }
 
     $self->{SIDS}->{newconnection}->{status} = 0;
 

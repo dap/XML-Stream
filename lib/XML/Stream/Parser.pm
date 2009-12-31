@@ -56,6 +56,9 @@ use vars qw( $VERSION );
 
 $VERSION = "1.22";
 
+use XML::Stream::Tree;
+use XML::Stream::Node;
+
 sub new
 {
     my $self = { };
@@ -383,10 +386,12 @@ sub attribution
             $ids = $id1;
             $id = "\'";
         }
-        if((($id2 < $id1) && ($id1 == -1)) || ($id2 != -1))
-        {
-            $ids = $id2;
-            $id = "\"";
+        else {
+            if((($id2 < $id1) && ($id1 == -1)) || ($id2 != -1))
+            {
+                $ids = $id2;
+                $id = "\"";
+            }
         }
 
         my $nextid = index($str,$id,$ids+1);

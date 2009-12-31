@@ -28,11 +28,11 @@
 ##############################################################################
 package XML::Stream::XPath::Op;
 
-use 5.006_001;
+use 5.008;
 use strict;
 use vars qw( $VERSION );
 
-$VERSION = "1.22";
+$VERSION = "1.23_01";
 
 sub new
 {

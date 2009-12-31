@@ -1,3 +1,16 @@
+1.23
+====
+  - RT#17484 Handle servers which re-use stream ID 
+  - RT#18711 Update link to XML Streams doc 
+  - RT#12977 Require perl >= 5.8.0
+  - RT#19415 Use jabber.org for tests
+  - RT#21932 Fix authname for Google Talk SASL auth
+  - RT#39098 Make dependencies more explicit
+  - RT#24817 Merge and massage of toddr's SASL fix
+  - RT#36864 Fake select on filehandles on win32
+  - RT#31215 Test and fix for XML node copying issue
+  - RT#17325 Fix and test for infinite loop on quotes
+
 1.22
 ====
   - Using Encode module to handle utf encoding and decoding.  I cannot

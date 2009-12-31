@@ -1,4 +1,4 @@
-XML::Stream v1.22
+XML::Stream v1.23_01 2009-12-31
 
 This module provides you with access to XML Streams.  An XML Stream
 is just that.  A stream of XML over a connection between two computers.
@@ -7,8 +7,8 @@ please visit:
 
 http://xmpp.org/protocols/streams/
 
-Ryan Eatmon
-reatmon@jabber.org
+Darian Anthony Patrick
+dapatrick@cpan.org
 
 
 INSTALLATION
@@ -28,11 +28,6 @@ RECOMMENDATIONS
   IO::Socket::SSL v0.81 - Module to enable TLS for XML::Stream.
   Net::DNS              - Enables access to SRV records.
 
-STATUS
-
-    Initial support added for XMPP 1.0.  This release may not be stable.  If
-you run into problems, downgrade to 1.21.
-
-Please send any bug reports to reatmon@jabber.org.
-2004/08/22
+Please submit bug reports at
+http://rt.cpan.org/Public/Bug/Report.html?Queue=XML-Stream
 

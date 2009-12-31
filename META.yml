@@ -1,12 +1,35 @@
-# http://module-build.sourceforge.net/META-spec.html
-#XXXXXXX This is a prototype!!!  It will change in the future!!! XXXXX#
-name:         XML-Stream
-version:      1.22
-version_from: lib/XML/Stream.pm
-installdirs:  site
+--- #YAML:1.0
+name:               XML-Stream
+version:            1.23_01
+abstract:           Creates an XML Stream connection and parses return data
+author:
+    - Darian Anthony Patrick <dapatrick@cpan.org>
+license:            LGPL
+distribution_type:  module
+configure_requires:
+    ExtUtils::MakeMaker:  0
+build_requires:
+    ExtUtils::MakeMaker:  0
 requires:
-    Authen::SASL:                  0
-    MIME::Base64:                  0
-
-distribution_type: module
-generated_by: ExtUtils::MakeMaker version 6.17
+    Authen::SASL:   0
+    Carp:           0
+    Encode:         0
+    FileHandle:     0
+    IO::Select:     0
+    IO::Socket:     0
+    MIME::Base64:   0
+    perl:           5.008
+    POSIX:          0
+    Sys::Hostname:  0
+    utf8:           0
+resources:
+    bugtracker:  https://rt.cpan.org/Dist/Display.html?Queue=XML-Stream
+    repository:  http://github.com/dap/XML-Stream
+no_index:
+    directory:
+        - t
+        - inc
+generated_by:       ExtUtils::MakeMaker version 6.56
+meta-spec:
+    url:      http://module-build.sourceforge.net/META-spec-v1.4.html
+    version:  1.4

@@ -24,7 +24,7 @@ package XML::Stream;
 
 =head1 NAME
 
-XML::Stream - Creates and XML Stream connection and parses return data
+XML::Stream - Creates an XML Stream connection and parses return data
 
 =head1 SYNOPSIS
 
@@ -243,7 +243,7 @@ it under the same terms as Perl itself.
 
 =cut
 
-use 5.006_001;
+use 5.008;
 use strict;
 use Sys::Hostname;
 use IO::Socket;
@@ -291,7 +291,7 @@ else
 }
 
 
-$VERSION = "1.22";
+$VERSION = "1.23_01";
 $NONBLOCKING = 0;
 
 use XML::Stream::Namespace;

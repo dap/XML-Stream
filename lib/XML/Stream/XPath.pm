@@ -22,11 +22,11 @@
 
 package XML::Stream::XPath;
 
-use 5.006_001;
+use 5.008;
 use strict;
 use vars qw( $VERSION %FUNCTIONS );
 
-$VERSION = "1.22";
+$VERSION = "1.23_01";
 
 use XML::Stream::XPath::Value;
 use XML::Stream::XPath::Op;

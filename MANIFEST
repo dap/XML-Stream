@@ -1,13 +1,9 @@
 CHANGES
-README
 INFO
-LICENSE.LGPL
-MANIFEST
-MANIFEST.SKIP
-Makefile.PL
 lib/XML/Stream.pm
-lib/XML/Stream/Node.pm
+lib/XML/Stream/IO/Select/Win32.pm
 lib/XML/Stream/Namespace.pm
+lib/XML/Stream/Node.pm
 lib/XML/Stream/Parser.pm
 lib/XML/Stream/Parser/DTD.pm
 lib/XML/Stream/Tree.pm
@@ -15,16 +11,22 @@ lib/XML/Stream/XPath.pm
 lib/XML/Stream/XPath/Op.pm
 lib/XML/Stream/XPath/Query.pm
 lib/XML/Stream/XPath/Value.pm
+LICENSE.LGPL
+Makefile.PL
+MANIFEST			This list of files
+META.yml
+README
 t/buildxml.t
+t/cdata.t
 t/lib/Test/Builder.pm
 t/lib/Test/More.pm
 t/lib/Test/Simple.pm
 t/load.t
 t/parse_node.t
 t/parse_tree.t
+t/quotes.t
 t/tcpip.t
 t/tcpip2ssl.t
 t/test.xml
 t/xml2config.t
 t/xpath.t
-META.yml                                 Module meta-data (added by MakeMaker)

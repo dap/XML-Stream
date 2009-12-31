@@ -2,6 +2,7 @@ use 5.008_000;
 use ExtUtils::MakeMaker;
 
 WriteMakefile(
+    (MM->can('signature_target') ? (SIGN => 1) : ()),
     'NAME'             => 'XML::Stream',
     'VERSION_FROM'     => 'lib/XML/Stream.pm',
     'ABSTRACT_FROM'    => 'lib/XML/Stream.pm',
@@ -25,6 +26,6 @@ WriteMakefile(
             'bugtracker' => 'https://rt.cpan.org/Dist/Display.html?Queue=XML-Stream',
             'repository' => 'http://github.com/dap/XML-Stream',
         }
-    }
+    },
 );
 

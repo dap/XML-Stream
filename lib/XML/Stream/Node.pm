@@ -406,7 +406,7 @@ sub copy
     {
         if ($child->get_tag() eq "__xmlstream__:node:cdata")
         {
-            $new_node->add_cdata($self->get_cdata());
+            $new_node->add_cdata($child->children());
         }
         else
         {

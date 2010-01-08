@@ -129,6 +129,8 @@ would be:
 
 By Ryan Eatmon in June 2002 for http://jabber.org/
 
+Currently maintained by Darian Anthony Patrick.
+
 =head1 COPYRIGHT
 
 This module is free software; you can redistribute it and/or modify
@@ -138,7 +140,7 @@ it under the same terms as Perl itself.
 
 use vars qw( $VERSION $LOADED );
 
-$VERSION = "1.23_01";
+$VERSION = "1.23";
 $LOADED = 1;
 
 sub new

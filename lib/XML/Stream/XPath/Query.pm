@@ -27,7 +27,7 @@ use strict;
 use Carp;
 use vars qw( $VERSION );
 
-$VERSION = "1.23_01";
+$VERSION = "1.23";
 
 sub new
 {

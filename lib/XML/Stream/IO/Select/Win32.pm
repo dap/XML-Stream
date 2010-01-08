@@ -13,6 +13,10 @@ XML::Stream::IO::Select::Win32 - Fake filehandle support for XML::Stream
 use strict;
 use warnings;
 
+use vars qw( $VERSION );
+
+$VERSION = "1.23";
+
 use base 'IO::Select';
 
 sub can_read {

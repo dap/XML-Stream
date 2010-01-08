@@ -85,6 +85,8 @@ a clean way of defining Namespaces for XML::Stream to use when connecting.
 Written by Ryan Eatmon in February 2000
 Idea By Thomas Charron in January of 2000 for http://etherx.jabber.org/streams/
 
+Currently maintained by Darian Anthony Patrick.
+
 =head1 COPYRIGHT
 
 This module is free software; you can redistribute it and/or modify
@@ -96,7 +98,7 @@ use strict;
 use Carp;
 use vars qw( $VERSION );
 
-$VERSION = "1.23_01";
+$VERSION = "1.23";
 
 sub new
 {

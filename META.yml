@@ -1,6 +1,6 @@
 --- #YAML:1.0
 name:               XML-Stream
-version:            1.23_01
+version:            1.23
 abstract:           Creates an XML Stream connection and parses return data
 author:
     - Darian Anthony Patrick <dapatrick@cpan.org>

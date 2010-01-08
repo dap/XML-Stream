@@ -108,7 +108,7 @@ XML::Stream - Creates an XML Stream connection and parses return data
                                       "http"     - HTTP
                                     HTTP recognizes proxies if the ENV
                                     variables http_proxy or https_proxy
-                                    are set.  ssl specifies if an SLL
+                                    are set.  ssl specifies if an SSL
                                     socket should be used for encrypted
                                     communications.  This function
                                     returns the same hash from GetRoot()
@@ -236,6 +236,8 @@ Colorized, and Dolby Surround sound added by Thomas Charron,
 tcharron@jabber.org
 By Jeremie in October of 1999 for http://etherx.jabber.org/streams/
 
+Currently maintained by Darian Anthony Patrick.
+
 =head1 COPYRIGHT
 
 This module is free software; you can redistribute it and/or modify
@@ -291,7 +293,7 @@ else
 }
 
 
-$VERSION = "1.23_01";
+$VERSION = "1.23";
 $NONBLOCKING = 0;
 
 use XML::Stream::Namespace;
@@ -681,7 +683,7 @@ sub Connect
         $self->debug(1,"Connect: srv requested");
         if ($NETDNS)
         {
-            my $res = new Net::DNS::Resolver();
+            my $res = Net::DNS::Resolver->new();
             my $query = $res->query($self->{SIDS}->{newconnection}->{srv}.".".$self->{SIDS}->{newconnection}->{hostname},"SRV");
             
             if ($query)

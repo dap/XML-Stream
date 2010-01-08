@@ -26,7 +26,7 @@ use 5.008;
 use strict;
 use vars qw( $VERSION %FUNCTIONS );
 
-$VERSION = "1.23_01";
+$VERSION = "1.23";
 
 use XML::Stream::XPath::Value;
 use XML::Stream::XPath::Op;

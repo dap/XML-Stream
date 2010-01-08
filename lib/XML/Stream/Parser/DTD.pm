@@ -44,6 +44,8 @@ package XML::Stream::Parser::DTD;
 
 By Ryan Eatmon in February of 2001 for http://jabber.org/
 
+Currently maintained by Darian Anthony Patrick.
+
 =head1 COPYRIGHT
 
 This module is free software; you can redistribute it and/or modify
@@ -54,7 +56,7 @@ it under the same terms as Perl itself.
 use strict;
 use vars qw( $VERSION );
 
-$VERSION = "1.23_01";
+$VERSION = "1.23";
 
 sub new
 {

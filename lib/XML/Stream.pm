@@ -91,10 +91,10 @@ XML::Stream - Creates an XML Stream connection and parses return data
           namespaces=>array,        to is needed if you want the stream
           connectiontype=>string,   to attribute to be something other
           ssl=>0|1,                 than the hostname you are connecting
-          srv=>string)              to.  from is needed if you want the
-                                    stream from attribute to be something
-                                    other than the hostname you are
-                                    connecting from.  myhostname should
+          ssl_verify                to.  from is needed if you want the
+            =>0x00|0x01|0x02|0x04,  stream from attribute to be something
+          ssl_ca_path=>string,      other than the hostname you are
+          srv=>string)              connecting from.  myhostname should
                                     not be needed but if the module
                                     cannot determine your hostname
                                     properly (check the debug log), set
@@ -108,13 +108,28 @@ XML::Stream - Creates an XML Stream connection and parses return data
                                       "http"     - HTTP
                                     HTTP recognizes proxies if the ENV
                                     variables http_proxy or https_proxy
-                                    are set.  ssl specifies if an SSL
-                                    socket should be used for encrypted
-                                    communications.  This function
-                                    returns the same hash from GetRoot()
-                                    below. Make sure you get the SID
-                                    (Session ID) since you have to use it
-                                    to call most other functions in here.
+                                    are set.
+                                    
+                                    ssl specifies whether an SSL socket
+                                    should be used for encrypted co-
+                                    mmunications.
+                                    
+                                    ssl_verify determines whether peer
+                                    certificate verification takes place.
+                                    See the documentation for the
+                                    SSL_verify_mode parameter to
+                                    L<IO::Socket::SSL->new()|IO::Socket::SSL>.
+                                    The default value is 0x01 causing the
+                                    server certificate to be verified, and
+                                    requiring that ssl_ca_path be set.
+
+                                    ssl_ca_path should be set to the path to
+                                    either a directory containing hashed CA
+                                    certificates, or a single file containing
+                                    acceptable CA certifictes concatenated
+                                    together. This parameter is required if
+                                    ssl_verify is set to anything other than
+                                    0x00 (no verification).
 
                                     If srv is specified AND Net::DNS is
                                     installed and can be loaded, then
@@ -124,6 +139,11 @@ XML::Stream - Creates an XML Stream connection and parses return data
                                     fails, or Net::DNS cannot be loaded,
                                     then hostname and port are left alone
                                     as the defaults.
+
+                                    This function returns the same hash from GetRoot()
+                                    below. Make sure you get the SID
+                                    (Session ID) since you have to use it
+                                    to call most other functions in here.
 
 
   OpenFile(string) - opens a filehandle to the argument specified, and
@@ -419,6 +439,8 @@ sub new
     $self->{SIDS}->{default}->{port} = "";
     $self->{SIDS}->{default}->{sock} = 0;
     $self->{SIDS}->{default}->{ssl} = (exists($args{ssl}) ? $args{ssl} : 0);
+    $self->{SIDS}->{default}->{ssl_verify} = 0x01; # verify peer by default
+    $self->{SIDS}->{default}->{ssl_ca_path} = '';
     $self->{SIDS}->{default}->{namespace} = "";
     $self->{SIDS}->{default}->{myhostname} = $fullname;
     $self->{SIDS}->{default}->{derivedhostname} = $fullname;
@@ -716,6 +738,31 @@ sub Connect
         return;
     }
 
+    # Set ssl_params for newconnection
+    if ( 1 == $self->{SIDS}->{newconnection}->{ssl} )
+    {
+        my %ssl_params = (
+            SSL_verify_mode => $self->{SIDS}->{newconnection}->{ssl_verify},
+        );
+
+        if ( 0x00 != $self->{SIDS}->{newconnection}->{ssl_verify} )
+        {
+            die ("Invalid or unreadable path specified for ssl_ca_path.")
+                unless -e -r $self->{SIDS}->{newconnection}->{ssl_ca_path};
+
+            if (-f $self->{SIDS}->{newconnection}->{ssl_ca_path} )
+            {
+                $ssl_params{'SSL_ca_file'} = $self->{SIDS}->{newconnection}->{ssl_ca_path};
+            }
+            else
+            {
+                $ssl_params{'SSL_ca_path'} = $self->{SIDS}->{newconnection}->{ssl_ca_path};
+            }
+        }
+
+        $self->{SIDS}->{newconnection}->{ssl_params} = \%ssl_params;
+    }
+
     #---------------------------------------------------------------------------
     # TCP/IP
     #---------------------------------------------------------------------------
@@ -757,9 +804,11 @@ sub Connect
             $self->debug(1,"Connect: Convert normal socket to SSL");
             $self->debug(1,"Connect: sock($self->{SIDS}->{newconnection}->{sock})");
             $self->LoadSSL();
-            $self->{SIDS}->{newconnection}->{sock} =
-                IO::Socket::SSL::socketToSSL($self->{SIDS}->{newconnection}->{sock},
-                                             {SSL_verify_mode=>0x00});
+
+            $self->{SIDS}->{newconnection}->{sock} = IO::Socket::SSL::socketToSSL(
+                    $self->{SIDS}->{newconnection}->{sock},
+                    $self->{SIDS}->{newconnection}->{ssl_params}
+            );
             $self->debug(1,"Connect: ssl_sock($self->{SIDS}->{newconnection}->{sock})");
             $self->debug(1,"Connect: SSL: We are secure") if ($self->{SIDS}->{newconnection}->{sock});
         }
@@ -997,9 +1046,10 @@ sub Connect
             $self->debug(1,"Connect: Convert normal socket to SSL");
             $self->debug(1,"Connect: sock($self->{SIDS}->{newconnection}->{sock})");
             $self->LoadSSL();
-            $self->{SIDS}->{newconnection}->{sock} =
-                IO::Socket::SSL::socketToSSL($self->{SIDS}->{newconnection}->{sock},
-                                             {SSL_verify_mode=>0x00});
+            $self->{SIDS}->{newconnection}->{sock} = IO::Socket::SSL::socketToSSL(
+                    $self->{SIDS}->{newconnection}->{sock},
+                    $self->{SIDS}->{newconnection}->{ssl_params}
+            );
             $self->debug(1,"Connect: ssl_sock($self->{SIDS}->{newconnection}->{sock})");
             $self->debug(1,"Connect: SSL: We are secure") if ($self->{SIDS}->{newconnection}->{sock});
         }
@@ -1921,7 +1971,10 @@ sub TLSClientProceed
         return;
     }
     
-    IO::Socket::SSL->start_SSL($self->{SIDS}->{$sid}->{sock},{SSL_verify_mode=>0x00});
+    IO::Socket::SSL->start_SSL(
+        $self->{SIDS}->{$sid}->{sock},
+        $self->{SIDS}->{$sid}->{ssl_params}
+    );
 
     $self->debug(1,"TLSClientProceed: ssl_sock($self->{SIDS}->{$sid}->{sock})");
     $self->debug(1,"TLSClientProceed: SSL: We are secure")
@@ -3034,9 +3087,8 @@ sub LoadSSL
     eval "use IO::Socket::SSL $SSL_Version";
     if ($@)
     {
-        croak("You requested that XML::Stream turn the socket into an SSL socket, but you don't have the correct version of IO::Socket::SSL v$SSL_Version.");
+        croak("IO::Socket::SSL v$SSL_Version or greater is required.");
     }
-    IO::Socket::SSL::context_init({SSL_verify_mode=>0x00});
     $SSL = 1;
 
     $self->debug(1,"LoadSSL: Success");

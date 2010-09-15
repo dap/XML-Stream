@@ -8,7 +8,11 @@ SKIP:
 
     BEGIN{ use_ok( "XML::Stream","Tree", "Node" ); }
 
-    my $stream = new XML::Stream(style=>"node");
+    my $stream = XML::Stream->new(
+        style=>'node',
+        debug=>'stdout',
+        debuglevel=>0,
+    );
     ok( defined($stream), "new()" );
 
     SKIP:
@@ -19,6 +23,7 @@ SKIP:
                                       namespace=>"jabber:client",
                                       connectiontype=>"tcpip",
                                       ssl=>1,
+                                      ssl_verify=>0x00,
                                       timeout=>10);
 
         skip "Cannot create initial socket", 1 unless $stream;

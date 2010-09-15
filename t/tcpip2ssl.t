@@ -1,5 +1,4 @@
 
-use lib "t/lib";
 use Test::More tests=>3;
 
 SKIP:

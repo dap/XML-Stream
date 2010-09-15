@@ -1,4 +1,3 @@
-use lib "./lib";
 use Test::More tests=>56;
 
 BEGIN{ use_ok( "XML::Stream","Tree", "Node" ); }

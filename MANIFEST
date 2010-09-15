@@ -19,9 +19,6 @@ README
 t/0-signature.t
 t/buildxml.t
 t/cdata.t
-t/lib/Test/Builder.pm
-t/lib/Test/More.pm
-t/lib/Test/Simple.pm
 t/load.t
 t/parse_node.t
 t/parse_tree.t

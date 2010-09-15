@@ -1,4 +1,3 @@
-use lib './lib';
 use Test::More tests => 3;
 
 use strict;

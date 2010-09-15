@@ -140,7 +140,7 @@ it under the same terms as Perl itself.
 
 use vars qw( $VERSION $LOADED );
 
-$VERSION = "1.23";
+$VERSION = "1.23_02";
 $LOADED = 1;
 
 sub new

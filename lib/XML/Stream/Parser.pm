@@ -63,9 +63,11 @@ use XML::Stream::Node;
 
 sub new
 {
+    my $class = shift;
+
     my $self = { };
 
-    bless($self);
+    bless($self, $class);
 
     my %args;
     while($#_ >= 0) { $args{ lc pop(@_) } = pop(@_); }

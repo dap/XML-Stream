@@ -5,6 +5,7 @@ SKIP:
 {
     eval("use IO::Socket::SSL 0.81;");
     skip "IO::Socket::SSL not installed", 2 if $@;
+    skip "No network communication allowed", 2 if ($ENV{NO_NETWORK});
 
     BEGIN{ use_ok( "XML::Stream","Tree", "Node" ); }
 

@@ -1,4 +1,6 @@
+Build.PL
 CHANGES
+fix_author.sh
 INFO
 lib/XML/Stream.pm
 lib/XML/Stream/IO/Select/Win32.pm
@@ -25,6 +27,7 @@ t/parse_tree.t
 t/quotes.t
 t/tcpip.t
 t/tcpip2ssl.t
+t/tcpip2tls.t
 t/test.xml
 t/xml2config.t
 t/xpath.t

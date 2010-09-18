@@ -27,7 +27,6 @@ t/parse_tree.t
 t/quotes.t
 t/tcpip.t
 t/tcpip2ssl.t
-t/tcpip2tls.t
 t/test.xml
 t/xml2config.t
 t/xpath.t

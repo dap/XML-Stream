@@ -1,6 +1,5 @@
 Build.PL
 CHANGES
-fix_author.sh
 INFO
 lib/XML/Stream.pm
 lib/XML/Stream/IO/Select/Win32.pm

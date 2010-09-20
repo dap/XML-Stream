@@ -57,7 +57,7 @@ This module licensed under the LGPL, version 2.1.
 use strict;
 use vars qw( $VERSION );
 
-$VERSION = "1.23_02";
+$VERSION = "1.23_03";
 
 use XML::Stream::Tree;
 use XML::Stream::Node;

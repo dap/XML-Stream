@@ -75,7 +75,7 @@ This module licensed under the LGPL, version 2.1.
 
 use vars qw( $VERSION $LOADED );
 
-$VERSION = "1.23_02";
+$VERSION = "1.23_03";
 $LOADED = 1;
 
 ##############################################################################

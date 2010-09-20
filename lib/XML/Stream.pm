@@ -314,7 +314,7 @@ else
 }
 
 
-$VERSION = "1.23_02";
+$VERSION = "1.23_03";
 $NONBLOCKING = 0;
 
 use XML::Stream::Namespace;
@@ -739,8 +739,9 @@ sub Connect
         return;
     }
 
-    # Set ssl_params for newconnection
-    if ( 1 == $self->{SIDS}->{newconnection}->{ssl} )
+    # Set ssl_params for newconnection ssl or tls is set
+    if (   1 == $self->{SIDS}->{newconnection}->{ssl}
+        || 1 == $self->{SIDS}->{newconnection}->{tls} )
     {
         my %ssl_params = (
             SSL_verify_mode => $self->{SIDS}->{newconnection}->{ssl_verify},

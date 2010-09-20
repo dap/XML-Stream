@@ -26,7 +26,7 @@ use 5.008;
 use strict;
 use vars qw( $VERSION );
 
-$VERSION = "1.23_02";
+$VERSION = "1.23_03";
 
 sub new
 {

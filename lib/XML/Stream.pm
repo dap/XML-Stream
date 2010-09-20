@@ -741,7 +741,7 @@ sub Connect
 
     # Set ssl_params for newconnection ssl or tls is set
     if (   1 == $self->{SIDS}->{newconnection}->{ssl}
-        || 1 == $self->{SIDS}->{newconnection}->{tls} )
+        || 1 == $self->{SIDS}->{newconnection}->{_tls} )
     {
         my %ssl_params = (
             SSL_verify_mode => $self->{SIDS}->{newconnection}->{ssl_verify},

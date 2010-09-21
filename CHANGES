@@ -1,4 +1,8 @@
-1.23_02
+1.23_03 2010-09-20
+====
+  - RT#57649 Prepare cert verification params when TLS connection is requested
+
+1.23_02 2010-09-18
 ====
   - Convert project to Module::Build, with ExtUtils::MakeMaker compatibility
   - RT#57649 SSL cert verification, enabled by default

@@ -1,13 +1,22 @@
-use 5.008_000;
 use strict;
 use warnings;
 
 use Module::Build;
 
 my $build = Module::Build->new(
-	module_name       => 'XML::Stream',
-	dist_author       => 'Darian Anthony Patrick <dapatrick@cpan.org>',
-	dist_version_from => 'lib/XML/Stream.pm',
+	module_name   => 'XML::Stream',
+	license       => 'lgpl',
+	dist_author   => 'Darian Anthony Patrick <dapatrick@cpan.org>',
+	dist_abstract => 'XML stream support library for XMPP-like protocols',
+
+	configure_requires => {
+		'Module::Build' => '0.360300',
+	},
+
+	build_requires => {
+		'Test::More'    => '0.92',
+	},
+
 	requires => {
 		'perl'          => 'v5.8.0',
 		'Authen::SASL'  => 0,
@@ -22,16 +31,8 @@ my $build = Module::Build->new(
 		'utf8'          => 0,
 	},
 
-	configure_requires => {
-		'Module::Build' => '0.360300',
-	},
-
-	build_requires => {
-		'Test::More'    => '0.92',
-	},
-
 	sign               => 1,
-	license            => 'lgpl',
+	create_license     => 1,
 	create_makefile_pl => 'traditional',
 	meta_merge => {
 		'resources' => {

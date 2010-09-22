@@ -439,7 +439,8 @@ sub new
     $self->{SIDS}->{default}->{hostname} = "";
     $self->{SIDS}->{default}->{port} = "";
     $self->{SIDS}->{default}->{sock} = 0;
-    $self->{SIDS}->{default}->{ssl} = (exists($args{ssl}) ? $args{ssl} : 0);
+    $self->{SIDS}->{default}->{ssl} = 0;
+    $self->{SIDS}->{default}->{_tls} = 0;
     $self->{SIDS}->{default}->{ssl_verify} = 0x01; # verify peer by default
     $self->{SIDS}->{default}->{ssl_ca_path} = '';
     $self->{SIDS}->{default}->{namespace} = "";

@@ -15,7 +15,7 @@ use warnings;
 
 use vars qw( $VERSION );
 
-$VERSION = "1.23_03";
+$VERSION = "1.23_04";
 
 use base 'IO::Select';
 

@@ -1,3 +1,8 @@
+1.23_04 2010-09-22
+====
+  - RT#57649 Set default value for _tls flag
+  - Module metadata changes
+
 1.23_03 2010-09-20
 ====
   - RT#57649 Prepare cert verification params when TLS connection is requested
@@ -13,6 +18,7 @@
 
 1.23
 ====
+  - New maintainer: DAPATRICK
   - RT#17484 Handle servers which re-use stream ID 
   - RT#18711 Update link to XML Streams doc 
   - RT#12977 Require perl >= 5.8.0

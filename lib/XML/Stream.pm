@@ -188,8 +188,6 @@ XML::Stream - Creates an XML Stream connection and parses return data
                       about why Process or Connect returned an undef
                       to you.
 
-  XPath(node,path) - returns an array of results that match the xpath.
-                     node can be any of the three types (Tree, Node).
 
 
 =cut
@@ -2678,10 +2676,18 @@ sub GetXMLData
 
 
 ##############################################################################
-#
-# XPath - run an xpath query on a node and return back the result.
-#
-##############################################################################
+
+=pod
+
+=head2 XPath
+
+Run an xpath query on a node and return back the result.
+
+XPath(node,path) returns an array of results that match the xpath.
+node can be any of the three types (Tree, Node).
+
+=cut
+
 sub XPath
 {
     my $tree = shift;

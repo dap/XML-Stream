@@ -191,78 +191,6 @@ XML::Stream - Creates an XML Stream connection and parses return data
   XPath(node,path) - returns an array of results that match the xpath.
                      node can be any of the three types (Tree, Node).
 
-=head1 VARIABLES
-
-  $NONBLOCKING - tells the Parser to enter into a nonblocking state.  This
-                 might cause some funky behavior since you can get nested
-                 callbacks while things are waiting.  1=on, 0=off(default).
-
-=head1 EXAMPLES
-
-  ##########################
-  # simple example
-
-  use XML::Stream qw( Tree );
-
-  $stream = new XML::Stream;
-
-  my $status = $stream->Connect(hostname => "jabber.org",
-                                port => 5222,
-                                namespace => "jabber:client");
-
-  if (!defined($status)) {
-    print "ERROR: Could not connect to server\n";
-    print "       (",$stream->GetErrorCode(),")\n";
-    exit(0);
-  }
-
-  while($node = $stream->Process()) {
-    # do something with $node
-  }
-
-  $stream->Disconnect();
-
-
-  ###########################
-  # example using a handler
-
-  use XML::Stream qw( Tree );
-
-  $stream = new XML::Stream;
-  $stream->SetCallBacks(node=>\&noder);
-  $stream->Connect(hostname => "jabber.org",
-		   port => 5222,
-		   namespace => "jabber:client",
-		   timeout => undef) || die $!;
-
-  # Blocks here forever, noder is called for incoming
-  # packets when they arrive.
-  while(defined($stream->Process())) { }
-
-  print "ERROR: Stream died (",$stream->GetErrorCode(),")\n";
-
-  sub noder
-  {
-    my $sid = shift;
-    my $node = shift;
-    # do something with $node
-  }
-
-=head1 AUTHOR
-
-Tweaked, tuned, and brightness changes by Ryan Eatmon, reatmon@ti.com
-in May of 2000.
-Colorized, and Dolby Surround sound added by Thomas Charron,
-tcharron@jabber.org
-By Jeremie in October of 1999 for http://etherx.jabber.org/streams/
-
-Currently maintained by Darian Anthony Patrick.
-
-=head1 COPYRIGHT
-
-Copyright (C) 1998-2004 Jabber Software Foundation http://jabber.org/
-
-This module licensed under the LGPL, version 2.1.
 
 =cut
 
@@ -3347,5 +3275,81 @@ sub sprintData
     return $outString;
 }
 
+=pod
+
+=head1 VARIABLES
+
+  $NONBLOCKING - tells the Parser to enter into a nonblocking state.  This
+                 might cause some funky behavior since you can get nested
+                 callbacks while things are waiting.  1=on, 0=off(default).
+
+=head1 EXAMPLES
+
+  ##########################
+  # simple example
+
+  use XML::Stream qw( Tree );
+
+  $stream = new XML::Stream;
+
+  my $status = $stream->Connect(hostname => "jabber.org",
+                                port => 5222,
+                                namespace => "jabber:client");
+
+  if (!defined($status)) {
+    print "ERROR: Could not connect to server\n";
+    print "       (",$stream->GetErrorCode(),")\n";
+    exit(0);
+  }
+
+  while($node = $stream->Process()) {
+    # do something with $node
+  }
+
+  $stream->Disconnect();
+
+
+  ###########################
+  # example using a handler
+
+  use XML::Stream qw( Tree );
+
+  $stream = new XML::Stream;
+  $stream->SetCallBacks(node=>\&noder);
+  $stream->Connect(hostname => "jabber.org",
+		   port => 5222,
+		   namespace => "jabber:client",
+		   timeout => undef) || die $!;
+
+  # Blocks here forever, noder is called for incoming
+  # packets when they arrive.
+  while(defined($stream->Process())) { }
+
+  print "ERROR: Stream died (",$stream->GetErrorCode(),")\n";
+
+  sub noder
+  {
+    my $sid = shift;
+    my $node = shift;
+    # do something with $node
+  }
+
+=head1 AUTHOR
+
+Tweaked, tuned, and brightness changes by Ryan Eatmon, reatmon@ti.com
+in May of 2000.
+Colorized, and Dolby Surround sound added by Thomas Charron,
+tcharron@jabber.org
+By Jeremie in October of 1999 for http://etherx.jabber.org/streams/
+
+Currently maintained by Darian Anthony Patrick.
+
+=head1 COPYRIGHT
+
+Copyright (C) 1998-2004 Jabber Software Foundation http://jabber.org/
+
+This module licensed under the LGPL, version 2.1.
+
+=cut
 
 1;

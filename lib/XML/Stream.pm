@@ -179,9 +179,6 @@ XML::Stream - Creates an XML Stream connection and parses return data
   GetSock(sid) - returns a pointer to the IO::Socket object for the
                  specified session.
 
-  Send(sid,    - sends the string over the specified connection as is.
-       string)   This does no checking if valid XML was sent or not.
-                 Best behavior when sending information.
 =cut
 
 use 5.008;
@@ -1612,11 +1609,22 @@ sub Read
 }
 
 
-##############################################################################
-#
-# Send - Takes the data string and sends it to the server
-#
-##############################################################################
+#############################################################################
+
+=pod
+
+=head2 Send
+
+Takes the data string and sends it to the server
+
+  Send(sid, string);
+
+Sends the string over the specified connection as is.
+This does no checking if valid XML was sent or not.
+Best behavior when sending information.
+
+=cut
+
 sub Send
 {
     my $self = shift;

@@ -159,7 +159,7 @@ sub isValid
     my @valid_elems;
     foreach my $elem (@elems)
     {
-        my $tmp_ctxt = new XML::Stream::XPath::Value($elem);
+        my $tmp_ctxt = XML::Stream::XPath::Value->new($elem);
         $tmp_ctxt->in_context(1);
         if ($self->{OP}->isValid(\$tmp_ctxt))
         {
@@ -370,7 +370,7 @@ sub isValid
     my $self = shift;
     my $ctxt = shift;
 
-    my $tmp_ctxt = new XML::Stream::XPath::Value();
+    my $tmp_ctxt = XML::Stream::XPath::Value->new();
     $tmp_ctxt->setList($$ctxt->getList());
     $tmp_ctxt->in_context(0);
     
@@ -445,7 +445,7 @@ sub isValid
     my $self = shift;
     my $ctxt = shift;
 
-    my $tmp_ctxt = new XML::Stream::XPath::Value();
+    my $tmp_ctxt = XML::Stream::XPath::Value->new();
     $tmp_ctxt->setList($$ctxt->getList());
     $tmp_ctxt->in_context(0);
     
@@ -664,9 +664,9 @@ sub isValid
 
     foreach my $elem (@elems)
     {
-        my $tmp_ctxt_l = new XML::Stream::XPath::Value($elem);
+        my $tmp_ctxt_l = XML::Stream::XPath::Value->new($elem);
         $tmp_ctxt_l->in_context(1);
-        my $tmp_ctxt_r = new XML::Stream::XPath::Value($elem);
+        my $tmp_ctxt_r = XML::Stream::XPath::Value->new($elem);
         $tmp_ctxt_r->in_context(1);
 
         my $opl = $self->{OP_L}->isValid(\$tmp_ctxt_l);
@@ -813,7 +813,7 @@ sub function_not
     my @valid_elems;
     foreach my $elem (@elems)
     {
-        my $tmp_ctxt = new XML::Stream::XPath::Value($elem);
+        my $tmp_ctxt = XML::Stream::XPath::Value->new($elem);
         $tmp_ctxt->in_context(1);
         if (!($args[0]->isValid(\$tmp_ctxt)))
         {

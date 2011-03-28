@@ -221,7 +221,7 @@ sub add_child
 {
     my $self = shift;
 
-    my $child = new XML::Stream::Node(@_);
+    my $child = XML::Stream::Node->new(@_);
     push(@{$self->{CHILDREN}},$child);
     return $child;
 }
@@ -246,7 +246,7 @@ sub remove_child
 sub add_cdata
 {
     my $self = shift;
-    my $child = new XML::Stream::Node("__xmlstream__:node:cdata");
+    my $child = XML::Stream::Node->new("__xmlstream__:node:cdata");
     foreach my $cdata (@_)
     {
         push(@{$child->{CHILDREN}},$cdata);
@@ -401,7 +401,7 @@ sub copy
 {
     my $self = shift;
 
-    my $new_node = new XML::Stream::Node();
+    my $new_node = XML::Stream::Node->new();
     $new_node->set_tag($self->get_tag());
     $new_node->put_attrib($self->attrib());
 
@@ -442,7 +442,7 @@ sub _handle_element
 
     $self->debug(2,"Node: _handle_element: sid($sid) sax($sax) tag($tag) att(",%att,")");
 
-    my $node = new XML::Stream::Node($tag);
+    my $node = XML::Stream::Node->new($tag);
     $node->put_attrib(%att);
 
     $self->debug(2,"Node: _handle_element: check(",$#{$self->{SIDS}->{$sid}->{node}},")");

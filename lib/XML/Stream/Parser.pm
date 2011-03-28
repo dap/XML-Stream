@@ -103,7 +103,7 @@ sub new
         $self->{DEBUG} = 1;
         if (lc($args{debug}) eq "stdout")
         {
-            $self->{DEBUGFILE} = new FileHandle(">&STDERR");
+            $self->{DEBUGFILE} = FileHandle->new(">&STDERR");
             $self->{DEBUGFILE}->autoflush(1);
         }
         else
@@ -112,7 +112,7 @@ sub new
             {
                 if (-w $args{debug})
                 {
-                    $self->{DEBUGFILE} = new FileHandle(">$args{debug}");
+                    $self->{DEBUGFILE} = FileHandle->new(">$args{debug}");
                     $self->{DEBUGFILE}->autoflush(1);
                 }
                 else
@@ -124,7 +124,7 @@ sub new
             }
             else
             {
-                $self->{DEBUGFILE} = new FileHandle(">$args{debug}");
+                $self->{DEBUGFILE} = FileHandle->new(">$args{debug}");
                 if (defined($self->{DEBUGFILE}))
                 {
                     $self->{DEBUGFILE}->autoflush(1);

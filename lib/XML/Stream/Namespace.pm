@@ -55,12 +55,12 @@ a clean way of defining Namespaces for XML::Stream to use when connecting.
 =head1 EXAMPLES
 
 
-  $myNamespace = new XML::Stream::Namespace("mynamspace");
+  $myNamespace = XML::Stream::Namespace->new("mynamspace");
   $myNamespace->SetXMLNS("http://www.mynamespace.org/xmlns");
   $myNamespace->SetAttributes(foo=>"bar",
                               bob=>"vila");
 
-  $stream = new XML::Stream;
+  $stream = XML::Stream->new;
   $stream->Connect(name=>"foo.bar.org",
                    port=>1234,
                    namespace=>"foo:bar",

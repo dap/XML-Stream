@@ -220,7 +220,7 @@ sub new
         $self->{DEBUG} = 1;
         if (lc($args{debug}) eq "stdout")
         {
-            $self->{DEBUGFILE} = new FileHandle(">&STDERR");
+            $self->{DEBUGFILE} = FileHandle->new(">&STDERR");
             $self->{DEBUGFILE}->autoflush(1);
         }
         else
@@ -229,7 +229,7 @@ sub new
             {
                 if (-w $args{debug})
                 {
-                    $self->{DEBUGFILE} = new FileHandle(">$args{debug}");
+                    $self->{DEBUGFILE} = FileHandle->new(">$args{debug}");
                     $self->{DEBUGFILE}->autoflush(1);
                 }
                 else
@@ -241,7 +241,7 @@ sub new
             }
             else
             {
-                $self->{DEBUGFILE} = new FileHandle(">$args{debug}");
+                $self->{DEBUGFILE} = FileHandle->new(">$args{debug}");
                 if (defined($self->{DEBUGFILE}))
                 {
                     $self->{DEBUGFILE}->autoflush(1);
@@ -372,7 +372,7 @@ sub Listen
     while($self->{SIDS}->{$serverid}->{sock} == 0)
     {
         $self->{SIDS}->{$serverid}->{sock} =
-            new IO::Socket::INET(LocalHost=>$self->{SIDS}->{$serverid}->{hostname},
+            IO::Socket::INET->new(LocalHost=>$self->{SIDS}->{$serverid}->{hostname},
                                  LocalPort=>$self->{SIDS}->{$serverid}->{port},
                                  Reuse=>1,
                                  Listen=>10,
@@ -384,9 +384,9 @@ sub Listen
     $self->{SIDS}->{$serverid}->{sock}->autoflush(1);
 
     $self->{SELECT} =
-        new IO::Select($self->{SIDS}->{$serverid}->{sock});
+        IO::Select->new($self->{SIDS}->{$serverid}->{sock});
     $self->{SIDS}->{$serverid}->{select} =
-        new IO::Select($self->{SIDS}->{$serverid}->{sock});
+        IO::Select->new($self->{SIDS}->{$serverid}->{sock});
 
     $self->{SOCKETS}->{$self->{SIDS}->{$serverid}->{sock}} = "$serverid";
 
@@ -426,7 +426,7 @@ sub ConnectionAccept
     # Create the XML::Stream::Parser and register our callbacks
     #-------------------------------------------------------------------------
     $self->{SIDS}->{$sid}->{parser} =
-        new XML::Stream::Parser(%{$self->{DEBUGARGS}},
+        XML::Stream::Parser->new(%{$self->{DEBUGARGS}},
                                 nonblocking=>$NONBLOCKING,
                                 sid=>$sid,
                                 style=>$self->{DATASTYLE},
@@ -438,7 +438,7 @@ sub ConnectionAccept
                                );
 
     $self->{SIDS}->{$sid}->{select} =
-        new IO::Select($self->{SIDS}->{$sid}->{sock});
+        IO::Select->new($self->{SIDS}->{$sid}->{sock});
     $self->{SIDS}->{$sid}->{connectiontype} = "tcpip";
     $self->{SOCKETS}->{$self->{SIDS}->{$sid}->{sock}} = $sid;
 
@@ -729,7 +729,7 @@ sub Connect
         # abort ourselves and let the user check $! on his own.
         #-----------------------------------------------------------------------
         $self->{SIDS}->{newconnection}->{sock} =
-            new IO::Socket::INET(PeerAddr=>$self->{SIDS}->{newconnection}->{hostname},
+            IO::Socket::INET->new(PeerAddr=>$self->{SIDS}->{newconnection}->{hostname},
                                  PeerPort=>$self->{SIDS}->{newconnection}->{port},
                                  Proto=>"tcp",
                                  (($timeout ne "") ? ( Timeout=>$timeout ) : ()),
@@ -758,7 +758,7 @@ sub Connect
     if ($self->{SIDS}->{newconnection}->{connectiontype} eq "stdinout")
     {
         $self->{SIDS}->{newconnection}->{sock} =
-            new FileHandle(">&STDOUT");
+            FileHandle->new(">&STDOUT");
     }  
 
     #---------------------------------------------------------------------------
@@ -795,7 +795,7 @@ sub Connect
             else
             {
                 require HTTP::ProxyAutoConfig;
-                $PAC = new HTTP::ProxyAutoConfig();
+                $PAC = HTTP::ProxyAutoConfig->new();
             }
         }
 
@@ -861,7 +861,7 @@ sub Connect
 
             $self->debug(1,"Connect: Combo #0: Create normal socket");
             $self->{SIDS}->{newconnection}->{sock} =
-            new IO::Socket::INET(PeerAddr=>$self->{SIDS}->{newconnection}->{hostname},
+            IO::Socket::INET->new(PeerAddr=>$self->{SIDS}->{newconnection}->{hostname},
                                  PeerPort=>$self->{SIDS}->{newconnection}->{port},
                                  Proto=>"tcp",
                                  (($timeout ne "") ? ( Timeout=>$timeout ) : ()),
@@ -890,7 +890,7 @@ sub Connect
 
             $self->debug(1,"Connect: Combo #1: PUT through http_proxy");
             $self->{SIDS}->{newconnection}->{sock} =
-                new IO::Socket::INET(PeerAddr=>$self->{SIDS}->{newconnection}->{httpproxyhostname},
+                IO::Socket::INET->new(PeerAddr=>$self->{SIDS}->{newconnection}->{httpproxyhostname},
                                      PeerPort=>$self->{SIDS}->{newconnection}->{httpproxyport},
                                      Proto=>"tcp",
                                      (($timeout ne "") ? ( Timeout=>$timeout ) : ()),
@@ -919,7 +919,7 @@ sub Connect
 
             $self->debug(1,"Connect: Combo #2: CONNECT through http_proxy");
             $self->{SIDS}->{newconnection}->{sock} =
-                new IO::Socket::INET(PeerAddr=>$self->{SIDS}->{newconnection}->{httpproxyhostname},
+                IO::Socket::INET->new(PeerAddr=>$self->{SIDS}->{newconnection}->{httpproxyhostname},
                                      PeerPort=>$self->{SIDS}->{newconnection}->{httpproxyport},
                                      Proto=>"tcp",
                                      (($timeout ne "") ? ( Timeout=>$timeout ) : ()),
@@ -946,7 +946,7 @@ sub Connect
         {
             $self->debug(1,"Connect: Combo #3: CONNECT through https_proxy");
             $self->{SIDS}->{newconnection}->{sock} =
-                new IO::Socket::INET(PeerAddr=>$self->{SIDS}->{newconnection}->{httpsproxyhostname},
+                IO::Socket::INET->new(PeerAddr=>$self->{SIDS}->{newconnection}->{httpsproxyhostname},
                                      PeerPort=>$self->{SIDS}->{newconnection}->{httpsproxyport},
                                      Proto=>"tcp");
             $connected = defined($self->{SIDS}->{newconnection}->{sock});
@@ -1061,7 +1061,7 @@ sub OpenStream
     # Create the XML::Stream::Parser and register our callbacks
     #---------------------------------------------------------------------------
     $self->{SIDS}->{$currsid}->{parser} =
-        new XML::Stream::Parser(%{$self->{DEBUGARGS}},
+        XML::Stream::Parser->new(%{$self->{DEBUGARGS}},
                                 nonblocking=>$NONBLOCKING,
                                 sid=>$currsid,
                                 style=>$self->{DATASTYLE},
@@ -1073,18 +1073,18 @@ sub OpenStream
                                );
 
     $self->{SIDS}->{$currsid}->{select} =
-        new IO::Select($self->{SIDS}->{$currsid}->{sock});
+        IO::Select->new($self->{SIDS}->{$currsid}->{sock});
 
     if (($self->{SIDS}->{$currsid}->{connectiontype} eq "tcpip") ||
             ($self->{SIDS}->{$currsid}->{connectiontype} eq "http"))
     {
-        $self->{SELECT} = new IO::Select($self->{SIDS}->{$currsid}->{sock});
+        $self->{SELECT} = IO::Select->new($self->{SIDS}->{$currsid}->{sock});
         $self->{SOCKETS}->{$self->{SIDS}->{$currsid}->{sock}} = "newconnection";
     }
 
     if ($self->{SIDS}->{$currsid}->{connectiontype} eq "stdinout")
     {
-        $self->{SELECT} = new IO::Select(*STDIN);
+        $self->{SELECT} = IO::Select->new(*STDIN);
         $self->{SOCKETS}->{$self->{SIDS}->{$currsid}->{sock}} = $currsid;
         $self->{SOCKETS}->{*STDIN} = $currsid;
         $self->{SIDS}->{$currsid}->{select}->add(*STDIN);
@@ -1200,7 +1200,7 @@ sub OpenFile
 
     $self->{SIDS}->{newconnection}->{connectiontype} = "file";
 
-    $self->{SIDS}->{newconnection}->{sock} = new FileHandle($file);
+    $self->{SIDS}->{newconnection}->{sock} = FileHandle->new($file);
     $self->{SIDS}->{newconnection}->{sock}->autoflush(1);
 
     $self->RegisterPrefix("newconnection",&ConstXMLNS("stream"),"stream");
@@ -1209,7 +1209,7 @@ sub OpenFile
     # Create the XML::Stream::Parser and register our callbacks
     #---------------------------------------------------------------------------
     $self->{SIDS}->{newconnection}->{parser} =
-        new XML::Stream::Parser(%{$self->{DEBUGARGS}},
+        XML::Stream::Parser->new(%{$self->{DEBUGARGS}},
                     nonblocking=>$NONBLOCKING,
                     sid=>"newconnection",
                     style=>$self->{DATASTYLE},
@@ -1224,19 +1224,19 @@ sub OpenFile
     # so we fake it out using XML::Stream::IO::Select::Win32
     if ( $^O =~ /mswin32/i ) {
         $self->{SIDS}->{newconnection}->{select}
-            = new XML::Stream::IO::Select::Win32(
+            = XML::Stream::IO::Select::Win32->new(
                 $self->{SIDS}->{newconnection}->{sock});
 
         $self->{SELECT}
-            = new XML::Stream::IO::Select::Win32(
+            = XML::Stream::IO::Select::Win32->new(
                 $self->{SIDS}->{newconnection}->{sock});
     }
     else {
         $self->{SIDS}->{newconnection}->{select}
-            = new IO::Select($self->{SIDS}->{newconnection}->{sock});
+            = IO::Select->new($self->{SIDS}->{newconnection}->{sock});
 
         $self->{SELECT}
-            = new IO::Select($self->{SIDS}->{newconnection}->{sock});
+            = IO::Select->new($self->{SIDS}->{newconnection}->{sock});
     }
 
     $self->{SIDS}->{newconnection}->{status} = 0;
@@ -2286,7 +2286,7 @@ sub SASLClient
 
     my $authname = $username . '@' . $domain;
     
-    my $sasl = new Authen::SASL(mechanism=>join(" ",@{$mechanisms}),
+    my $sasl = Authen::SASL->new(mechanism=>join(" ",@{$mechanisms}),
                                 callback=>{
                                            authname => $authname,
 
@@ -2931,7 +2931,7 @@ sub XPath
     my $tree = shift;
     my $path = shift;
     
-    my $query = new XML::Stream::XPath::Query($path);
+    my $query = XML::Stream::XPath::Query->new($path);
     my $result = $query->execute($tree);
     if ($result->check())
     {
@@ -2963,7 +2963,7 @@ sub XPathCheck
     my $tree = shift;
     my $path = shift;
     
-    my $query = new XML::Stream::XPath::Query($path);
+    my $query = XML::Stream::XPath::Query->new($path);
     my $result = $query->execute($tree);
     return $result->check();
 }
@@ -3605,7 +3605,7 @@ simple example
 
   use XML::Stream qw( Tree );
 
-  $stream = new XML::Stream;
+  $stream = XML::Stream->new;
 
   my $status = $stream->Connect(hostname => "jabber.org",
                                 port => 5222,
@@ -3628,7 +3628,7 @@ Example using a handler
 
   use XML::Stream qw( Tree );
 
-  $stream = new XML::Stream;
+  $stream = XML::Stream->new;
   $stream->SetCallBacks(node=>\&noder);
   $stream->Connect(hostname => "jabber.org",
 		   port => 5222,

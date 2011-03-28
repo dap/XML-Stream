@@ -1,8 +1,8 @@
-BEGIN {print "1..7\n";}
-END {print "not ok 1\n" unless $loaded;}
+use strict;
+use warnings;
+
+use Test::More tests=>6;
 use XML::Stream qw( Node );
-$loaded = 1;
-print "ok 1\n";
 
 my @tests;
 $tests[4] = 1;
@@ -19,8 +19,7 @@ while( %status = $stream->Process()) {
 }
 
 foreach (2..6) {
-  print "not " unless $tests[$_];
-  print "ok $_\n";
+  ok $tests[$_];
 }
 
 sub onPacket {
@@ -55,6 +54,5 @@ sub onPacket {
 
 my $node = XML::Stream::Node->new("test","<foo/>");
 
-print "not " unless ($node->GetXML() eq "<test>&lt;foo/&gt;</test>");
-print "ok 7\n";
+is ($node->GetXML(),  "<test>&lt;foo/&gt;</test>");
 

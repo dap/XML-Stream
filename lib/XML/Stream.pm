@@ -82,90 +82,7 @@ XML::Stream - Creates an XML Stream connection and parses return data
                              For more information see the respective man
                              pages.
 
-  Connect(hostname=>string,       - opens a tcp connection to the
-          port=>integer,            specified server and sends the proper
-          to=>string,               opening XML Stream tag.  hostname,
-          from=>string,             port, and namespace are required.
-          myhostname=>string,       namespaces allows you to use
-          namespace=>string,        XML::Stream::Namespace objects.
-          namespaces=>array,        to is needed if you want the stream
-          connectiontype=>string,   to attribute to be something other
-          ssl=>0|1,                 than the hostname you are connecting
-          ssl_verify                to.  from is needed if you want the
-            =>0x00|0x01|0x02|0x04,  stream from attribute to be something
-          ssl_ca_path=>string,      other than the hostname you are
-          srv=>string)              connecting from.  myhostname should
-                                    not be needed but if the module
-                                    cannot determine your hostname
-                                    properly (check the debug log), set
-                                    this to the correct value, or if you
-                                    want the other side of the  stream to
-                                    think that you are someone else.  The
-                                    type determines the kind of
-                                    connection that is made:
-                                      "tcpip"    - TCP/IP (default)
-                                      "stdinout" - STDIN/STDOUT
-                                      "http"     - HTTP
-                                    HTTP recognizes proxies if the ENV
-                                    variables http_proxy or https_proxy
-                                    are set.
-                                    
-                                    ssl specifies whether an SSL socket
-                                    should be used for encrypted co-
-                                    mmunications.
-                                    
-                                    ssl_verify determines whether peer
-                                    certificate verification takes place.
-                                    See the documentation for the
-                                    SSL_verify_mode parameter to
-                                    L<IO::Socket::SSL->new()|IO::Socket::SSL>.
-                                    The default value is 0x01 causing the
-                                    server certificate to be verified, and
-                                    requiring that ssl_ca_path be set.
-
-                                    ssl_ca_path should be set to the path to
-                                    either a directory containing hashed CA
-                                    certificates, or a single file containing
-                                    acceptable CA certifictes concatenated
-                                    together. This parameter is required if
-                                    ssl_verify is set to anything other than
-                                    0x00 (no verification).
-
-                                    If srv is specified AND Net::DNS is
-                                    installed and can be loaded, then
-                                    an SRV query is sent to srv.hostname
-                                    and the results processed to replace
-                                    the hostname and port.  If the lookup
-                                    fails, or Net::DNS cannot be loaded,
-                                    then hostname and port are left alone
-                                    as the defaults.
-
-                                    This function returns the same hash from GetRoot()
-                                    below. Make sure you get the SID
-                                    (Session ID) since you have to use it
-                                    to call most other functions in here.
-
-
-  OpenFile(string) - opens a filehandle to the argument specified, and
-                     pretends that it is a stream.  It will ignore the
-                     outer tag, and not check if it was a
-                     <stream:stream/>. This is useful for writing a
-                     program that has to parse any XML file that is
-                     basically made up of small packets (like RDF).
-
-  Disconnect(sid) - sends the proper closing XML tag and closes the
-                    specified socket down.
-
-  Process(integer) - waits for data to be available on the socket.  If
-                     a timeout is specified then the Process function
-                     waits that period of time before returning nothing.
-                     If a timeout period is not specified then the
-                     function blocks until data is received.  The
-                     function returns a hash with session ids as the key,
-                     and status values or data as the hash values.
-
-
-
+ 
 =cut
 
 use 5.008;
@@ -580,13 +497,101 @@ sub Respond
 ##############################################################################
 
 ##############################################################################
-#
-# Connect - starts the stream by connecting to the server, sending the opening
-#           stream tag, and then waiting for a response and verifying that it
-#           is correct for this stream.  Server name, port, and namespace are
-#           required otherwise we don't know where to send the stream to...
-#
-##############################################################################
+
+=pod
+
+=head2 Connect
+
+Starts the stream by connecting to the server, sending the opening
+stream tag, and then waiting for a response and verifying that it
+is correct for this stream.  Server name, port, and namespace are
+required otherwise we don't know where to send the stream to...
+
+  Connect(hostname=>string,       
+          port=>integer, 
+          to=>string,             
+          from=>string,           
+          myhostname=>string,     
+          namespace=>string,      
+          namespaces=>array,      
+          connectiontype=>string, 
+          ssl=>0|1,
+          ssl_verify =>0x00|0x01|0x02|0x04,
+          ssl_ca_path=>string,
+          srv=>string)
+
+Opens a tcp connection to the
+specified server and sends the proper
+opening XML Stream tag.  C<hostname>,
+C<port>, and C<namespace> are required.
+namespaces allows you to use
+XML::Stream::Namespace objects.
+
+C<to> is needed if you want the stream
+to attribute to be something other
+than the hostname you are connecting
+to.
+
+C<from> is needed if you want the
+stream from attribute to be something
+other than the hostname you are
+connecting from.
+
+C<myhostname> should
+not be needed but if the module
+cannot determine your hostname
+properly (check the debug log), set
+this to the correct value, or if you
+want the other side of the  stream to
+think that you are someone else.  The
+type determines the kind of
+connection that is made:
+
+  "tcpip"    - TCP/IP (default)
+  "stdinout" - STDIN/STDOUT
+  "http"     - HTTP
+
+HTTP recognizes proxies if the ENV
+variables http_proxy or https_proxy
+are set.
+
+C<ssl> specifies whether an SSL socket
+should be used for encrypted co-
+mmunications.
+
+C<ssl_verify> determines whether peer
+certificate verification takes place.
+See the documentation for the
+SSL_verify_mode parameter to
+L<IO::Socket::SSL->new()|IO::Socket::SSL>.
+The default value is 0x01 causing the
+server certificate to be verified, and
+requiring that ssl_ca_path be set.
+
+C<ssl_ca_path> should be set to the path to
+either a directory containing hashed CA
+certificates, or a single file containing
+acceptable CA certifictes concatenated
+together. This parameter is required if
+ssl_verify is set to anything other than
+0x00 (no verification).
+
+If srv is specified AND Net::DNS is
+installed and can be loaded, then
+an SRV query is sent to srv.hostname
+and the results processed to replace
+the hostname and port.  If the lookup
+fails, or Net::DNS cannot be loaded,
+then hostname and port are left alone
+as the defaults.
+
+This function returns the same hash from GetRoot()
+below. Make sure you get the SID
+(Session ID) since you have to use it
+to call most other functions in here.
+
+=cut
+
 sub Connect
 {
     my $self = shift;
@@ -1135,11 +1140,25 @@ sub OpenStream
 
 
 ##############################################################################
-#
-# OpenFile - starts the stream by opening a file and setting it up so that
-#            Process reads from the filehandle to get the incoming stream.
-#
-##############################################################################
+
+=pod
+
+=head2 OpenFile
+
+Starts the stream by opening a file and setting it up so that
+Process reads from the filehandle to get the incoming stream.
+
+ OpenFile(string)
+
+Opens a filehandle to the argument specified, and
+pretends that it is a stream.  It will ignore the
+outer tag, and not check if it was a
+<stream:stream/>. This is useful for writing a
+program that has to parse any XML file that is
+basically made up of small packets (like RDF).
+
+=cut
+
 sub OpenFile
 {
     my $self = shift;
@@ -1234,10 +1253,19 @@ sub OpenFile
 ##############################################################################
 
 ##############################################################################
-#
-# Disconnect - sends the closing XML tag and shuts down the socket.
-#
-##############################################################################
+
+=pod
+
+=head2 Disconnect
+
+sends the closing XML tag and shuts down the socket.
+
+  Disconnect(sid)
+
+Sends the proper closing XML tag and closes the specified socket down.
+
+=cut
+
 sub Disconnect
 {
     my $self = shift;
@@ -1344,14 +1372,29 @@ sub ParseStream
 
 
 ##############################################################################
-#
-# Process - checks for data on the socket and returns a status code depending
-#           on if there was data or not.  If a timeout is not defined in the
-#           call then the timeout defined in Connect() is used.  If a timeout
-#           of 0 is used then the call blocks until it gets some data,
-#           otherwise it returns after the timeout period.
-#
-##############################################################################
+
+=pod
+
+=head2 Process
+
+Checks for data on the socket and returns a status code depending
+on if there was data or not.  If a timeout is not defined in the
+call then the timeout defined in Connect() is used.  If a timeout
+of 0 is used then the call blocks until it gets some data,
+otherwise it returns after the timeout period.
+
+  Process(integer)
+
+Waits for data to be available on the socket.  If
+a timeout is specified then the Process function
+waits that period of time before returning nothing.
+If a timeout period is not specified then the
+function blocks until data is received.  The
+function returns a hash with session ids as the key,
+and status values or data as the hash values.
+
+=cut
+
 sub Process
 {
     my $self = shift;
@@ -3093,7 +3136,7 @@ sub NewSID
 
 =pod
 
-=heaad2 SetCallBacks
+=head2 SetCallBacks
 
 Takes a hash with top level tags to look for as the keys
 and pointers to functions as the values.

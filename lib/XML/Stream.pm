@@ -176,8 +176,6 @@ XML::Stream - Creates an XML Stream connection and parses return data
                  by the other end listed in a hash for the specified
                  session.
 
-  GetSock(sid) - returns a pointer to the IO::Socket object for the
-                 specified session.
 
 =cut
 
@@ -2996,11 +2994,19 @@ sub GetRoot
 
 
 ##############################################################################
-#
-# GetSock - returns the Socket so that an outside function can access it if
-#           desired.
-#
-##############################################################################
+
+=pod
+
+=head2 GetSock
+
+returns the Socket so that an outside function can access it if desired.
+
+  GetSock(sid)
+
+Returns a pointer to the IO::Socket object for the specified session.
+
+=cut
+
 sub GetSock
 {
     my $self = shift;

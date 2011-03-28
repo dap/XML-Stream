@@ -164,17 +164,6 @@ XML::Stream - Creates an XML Stream connection and parses return data
                      function returns a hash with session ids as the key,
                      and status values or data as the hash values.
 
-  SetCallBacks(node=>function,   - sets the callback that should be
-               update=>function)   called in various situations.  node
-                                   is used to handle the data structures
-                                   that are built for each top level tag.
-                                   Update is used for when Process is
-                                   blocking waiting for data, but you
-                                   want your original code to be updated.
-
-  GetRoot(sid) - returns the attributes that the stream:stream tag sent
-                 by the other end listed in a hash for the specified
-                 session.
 
 
 =cut
@@ -2978,12 +2967,22 @@ sub ns2prefix
 ##############################################################################
 
 ##############################################################################
-#
-# GetRoot - returns the hash of attributes for the root <stream:stream/> tag
-#           so that any attributes returned can be accessed.  from and any
-#           xmlns:foobar might be important.
-#
-##############################################################################
+
+=pod
+
+=head2 GetRoot
+
+Returns the hash of attributes for the root <stream:stream/> tag
+so that any attributes returned can be accessed.  from and any
+xmlns:foobar might be important.
+
+  GetRoot(sid)
+
+Returns the attributes that the stream:stream tag sent
+by the other end listed in a hash for the specified session.
+
+=cut
+
 sub GetRoot
 {
     my $self = shift;
@@ -3091,11 +3090,24 @@ sub NewSID
 
 
 ###########################################################################
-#
-# SetCallBacks - Takes a hash with top level tags to look for as the keys
-#                and pointers to functions as the values.
-#
-###########################################################################
+
+=pod
+
+=heaad2 SetCallBacks
+
+Takes a hash with top level tags to look for as the keys
+and pointers to functions as the values.
+
+  SetCallBacks(node=>function, update=>function);
+
+Sets the callback that should be called in various situations.
+
+C<node> is used to handle the data structures that are built for each top level tag.
+C<update> is used for when Process is blocking waiting for data, but you
+want your original code to be updated.
+
+=cut
+
 sub SetCallBacks
 {
     my $self = shift;

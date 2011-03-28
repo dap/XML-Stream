@@ -182,14 +182,6 @@ XML::Stream - Creates an XML Stream connection and parses return data
   Send(sid,    - sends the string over the specified connection as is.
        string)   This does no checking if valid XML was sent or not.
                  Best behavior when sending information.
-
-  GetErrorCode(sid) - returns a string for the specified session that
-                      will hopefully contain some useful information
-                      about why Process or Connect returned an undef
-                      to you.
-
-
-
 =cut
 
 use 5.008;
@@ -2397,11 +2389,23 @@ sub _node
 ##############################################################################
 
 ##############################################################################
-#
-# GetErrorCode - if you are returned an undef, you can call this function
-#                and hopefully learn more information about the problem.
-#
-##############################################################################
+
+=pod
+
+=head2 GetErrorCode
+
+if you are returned an undef, you can call this function
+and hopefully learn more information about the problem.
+
+  GetErrorCode(sid)
+
+returns a string for the specified session that
+will hopefully contain some useful information
+about why Process or Connect returned an undef
+to you.
+
+=cut
+
 sub GetErrorCode
 {
     my $self = shift;

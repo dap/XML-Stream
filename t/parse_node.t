@@ -7,7 +7,7 @@ print "ok 1\n";
 my @tests;
 $tests[4] = 1;
 
-my $stream = new XML::Stream( #debug=>"stdout",debuglevel=>99,
+my $stream = XML::Stream->new( #debug=>"stdout",debuglevel=>99,
 style=>"node");
 
 $stream->SetCallBacks(node=>sub{ &onPacket(@_) });
@@ -53,7 +53,7 @@ sub onPacket {
   }
 }
 
-my $node = new XML::Stream::Node("test","<foo/>");
+my $node = XML::Stream::Node->new("test","<foo/>");
 
 print "not " unless ($node->GetXML() eq "<test>&lt;foo/&gt;</test>");
 print "ok 7\n";

@@ -4,7 +4,7 @@ use strict;
 
 BEGIN { use_ok('XML::Stream', 'Node'); }
 
-my $a = new XML::Stream::Node;
+my $a = XML::Stream::Node->new;
 $a->set_tag("body");
 $a->add_cdata("one");
 

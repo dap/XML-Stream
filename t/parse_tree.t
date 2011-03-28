@@ -7,7 +7,7 @@ print "ok 1\n";
 my @tests;
 $tests[4] = 1;
 
-my $stream = new XML::Stream(style=>"tree");
+my $stream = XML::Stream->new(style=>"tree");
 
 $stream->SetCallBacks(node=>sub{ &onPacket(@_) });
 

@@ -6,7 +6,7 @@ my @value;
 
 foreach my $type ("tree","node")
 {
-    my $parser = new XML::Stream::Parser(style=>$type);
+    my $parser = XML::Stream::Parser->new(style=>$type);
     isa_ok($parser,"XML::Stream::Parser");
     $node = $parser->parsefile("t/test.xml");
 

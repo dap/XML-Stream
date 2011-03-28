@@ -2,7 +2,7 @@ use Test::More tests=>4;
 
 BEGIN{ use_ok("XML::Stream","Node"); }
 
-my $stream = new XML::Stream(style=>"node");
+my $stream = XML::Stream->new(style=>"node");
 ok( defined($stream), "new()" );
 isa_ok( $stream, "XML::Stream" );
 

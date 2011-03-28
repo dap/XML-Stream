@@ -8,7 +8,7 @@ my @tests;
 $tests[4] = 1;
 $tests[8] = 1;
 
-my $parser_tree = new XML::Stream::Parser(style=>"tree");
+my $parser_tree = XML::Stream::Parser->new(style=>"tree");
 my $tree = $parser_tree->parsefile("t/test.xml");
 
 %config = %{&XML::Stream::XML2Config($tree)};
@@ -39,7 +39,7 @@ if (exists($config{last}->{test1}->{test2}->{test3})) {
 }
 
 
-my $parser_node = new XML::Stream::Parser(style=>"node");
+my $parser_node = XML::Stream::Parser->new(style=>"node");
 my $node = $parser_node->parsefile("t/test.xml");
 
 %config = %{&XML::Stream::XML2Config($node)};

@@ -2700,11 +2700,16 @@ sub ProcessStreamError
 
 
 ##############################################################################
-#
-# StreamError - Given a type and text, generate a <stream:error/> packet to
-#               send back to the other side.
-#
-##############################################################################
+
+=pod
+
+=head2 StreamError
+
+Given a type and text, generate a <stream:error/> packet to
+send back to the other side.
+
+=cut
+
 sub StreamError
 {
     my $self = shift;
@@ -2816,23 +2821,28 @@ sub MarkActivity
 ##############################################################################
 
 ##############################################################################
-#
-# SetXMLData - takes a host of arguments and sets a portion of the specified
-#              data strucure with that data.  The function works in two
-#              modes "single" or "multiple".  "single" denotes that the
-#              function should locate the current tag that matches this
-#              data and overwrite it's contents with data passed in.
-#              "multiple" denotes that a new tag should be created even if
-#              others exist.
-#
-#              type    - single or multiple
-#              XMLTree - pointer to XML::Stream data object (tree or node)
-#              tag     - name of tag to create/modify (if blank assumes
-#                        working with top level tag)
-#              data    - CDATA to set for tag
-#              attribs - attributes to ADD to tag
-#
-##############################################################################
+
+=pod
+
+=head2 SetXMLData
+
+Takes a host of arguments and sets a portion of the specified
+data strucure with that data.  The function works in two
+modes "single" or "multiple".  "single" denotes that the
+function should locate the current tag that matches this
+data and overwrite it's contents with data passed in.
+"multiple" denotes that a new tag should be created even if
+others exist.
+
+type    - single or multiple
+XMLTree - pointer to XML::Stream data object (tree or node)
+tag     - name of tag to create/modify (if blank assumes
+          working with top level tag)
+data    - CDATA to set for tag
+attribs - attributes to ADD to tag
+
+=cut
+
 sub SetXMLData
 {
     return &XML::Stream::Node::SetXMLData(@_) if (ref($_[1]) eq "XML::Stream::Node");
@@ -2841,46 +2851,61 @@ sub SetXMLData
 
 
 ##############################################################################
-#
-# GetXMLData - takes a host of arguments and returns various data structures
-#              that match them.
-#
-#              type - "existence" - returns 1 or 0 if the tag exists in the
-#                                   top level.
-#                     "value" - returns either the CDATA of the tag, or the
-#                               value of the attribute depending on which is
-#                               sought.  This ignores any mark ups to the data
-#                               and just returns the raw CDATA.
-#                     "value array" - returns an array of strings representing
-#                                     all of the CDATA in the specified tag.
-#                                     This ignores any mark ups to the data
-#                                     and just returns the raw CDATA.
-#                     "tree" - returns a data structure that represents the
-#                              XML with the specified tag as the root tag.
-#                              Depends on the format that you are working with.
-#                     "tree array" - returns an array of data structures each
-#                                    with the specified tag as the root tag.
-#                     "child array" - returns a list of all children nodes
-#                                     not including CDATA nodes.
-#                     "attribs" - returns a hash with the attributes, and
-#                                 their values, for the things that match
-#                                 the parameters
-#                     "count" - returns the number of things that match
-#                               the arguments
-#                     "tag" - returns the root tag of this tree
-#              XMLTree - pointer to XML::Stream data structure
-#              tag     - tag to pull data from.  If blank then the top level
-#                        tag is accessed.
-#              attrib  - attribute value to retrieve.  Ignored for types
-#                        "value array", "tree", "tree array".  If paired
-#                        with value can be used to filter tags based on
-#                        attributes and values.
-#              value   - only valid if an attribute is supplied.  Used to
-#                        filter for tags that only contain this attribute.
-#                        Useful to search through multiple tags that all
-#                        reference different name spaces.
-#
-##############################################################################
+
+=pod
+
+=head2 GetXMLData
+
+Takes a host of arguments and returns various data structures
+that match them.
+
+type C<existence> - returns 1 or 0 if the tag exists in the top level.
+
+C<value> - returns either the CDATA of the tag, or the
+value of the attribute depending on which is
+sought.  This ignores any mark ups to the data
+and just returns the raw CDATA.
+
+C<value array>
+returns an array of strings representing
+all of the CDATA in the specified tag.
+This ignores any mark ups to the data
+and just returns the raw CDATA.
+
+C<tree> - returns a data structure that represents the
+XML with the specified tag as the root tag.
+Depends on the format that you are working with.
+
+C<tree array> returns an array of data structures each
+with the specified tag as the root tag.
+
+C<child array> - returns a list of all children nodes
+                not including CDATA nodes.
+
+C<attribs> - returns a hash with the attributes, and
+            their values, for the things that match
+            the parameters
+
+C<count> - returns the number of things that match
+          the arguments
+
+C<tag> - returns the root tag of this tree
+
+XMLTree - pointer to XML::Stream data structure
+
+C<tag>  - tag to pull data from.  If blank then the top level
+          tag is accessed.
+C<attrib>  - attribute value to retrieve.  Ignored for types
+          "value array", "tree", "tree array".  If paired
+          with value can be used to filter tags based on
+          attributes and values.
+C<value>   - only valid if an attribute is supplied.  Used to
+          filter for tags that only contain this attribute.
+          Useful to search through multiple tags that all
+          reference different name spaces.
+
+=cut
+
 sub GetXMLData
 {
     return &XML::Stream::Node::GetXMLData(@_) if (ref($_[1]) eq "XML::Stream::Node");
@@ -2923,11 +2948,16 @@ sub XPath
 
 
 ##############################################################################
-#
-# XPathCheck - run an xpath query on a node and return 1 or 0 if the path is
-#              valid.
-#
-##############################################################################
+
+=pod
+
+=head2 XPathCheck
+
+Run an xpath query on a node and return 1 or 0 if the path is
+valid.
+
+=cut
+
 sub XPathCheck
 {
     my $tree = shift;
@@ -2940,29 +2970,34 @@ sub XPathCheck
 
 
 ##############################################################################
-#
-# XML2Config - takes an XML data tree and turns it into a hash of hashes.
-#              This only works for certain kinds of XML trees like this:
-#
-#                <foo>
-#                  <bar>1</bar>
-#                  <x>
-#                    <y>foo</y>
-#                  </x>
-#                  <z>5</z>
-#                  <z>6</z>
-#                </foo>
-#
-#              The resulting hash would be:
-#
-#                $hash{bar} = 1;
-#                $hash{x}->{y} = "foo";
-#                $hash{z}->[0] = 5;
-#                $hash{z}->[1] = 6;
-#
-#              Good for config files.
-#
-##############################################################################
+
+=pod
+
+=head2 XML2Config
+
+Takes an XML data tree and turns it into a hash of hashes.
+This only works for certain kinds of XML trees like this:
+
+                <foo>
+                  <bar>1</bar>
+                  <x>
+                    <y>foo</y>
+                  </x>
+                  <z>5</z>
+                  <z>6</z>
+                </foo>
+
+The resulting hash would be:
+
+                $hash{bar} = 1;
+                $hash{x}->{y} = "foo";
+                $hash{z}->[0] = 5;
+                $hash{z}->[1] = 6;
+
+Good for config files.
+
+=cut
+
 sub XML2Config
 {
     return &XML::Stream::Node::XML2Config(@_) if (ref($_[0]) eq "XML::Stream::Node");
@@ -2971,29 +3006,34 @@ sub XML2Config
 
 
 ##############################################################################
-#
-# Config2XML - takes a hash and produces an XML string from it.  If the hash
-#              looks like this:
-#
-#                $hash{bar} = 1;
-#                $hash{x}->{y} = "foo";
-#                $hash{z}->[0] = 5;
-#                $hash{z}->[1] = 6;
-#
-#              The resulting xml would be:
-#
-#                <foo>
-#                  <bar>1</bar>
-#                  <x>
-#                    <y>foo</y>
-#                  </x>
-#                  <z>5</z>
-#                  <z>6</z>
-#                </foo>
-#
-#              Good for config files.
-#
-##############################################################################
+
+=pod
+
+
+=head2 Config2XML
+
+Takes a hash and produces an XML string from it.  If the hash looks like this:
+
+                $hash{bar} = 1;
+                $hash{x}->{y} = "foo";
+                $hash{z}->[0] = 5;
+                $hash{z}->[1] = 6;
+
+The resulting xml would be:
+
+                <foo>
+                  <bar>1</bar>
+                  <x>
+                    <y>foo</y>
+                  </x>
+                  <z>5</z>
+                  <z>6</z>
+                </foo>
+
+Good for config files.
+
+=cut
+
 sub Config2XML
 {
     my ($tag,$hash,$indent) = @_;
@@ -3043,12 +3083,17 @@ sub Config2XML
 
 
 ##############################################################################
-#
-# EscapeXML - Simple function to make sure that no bad characters make it into
-#             in the XML string that might cause the string to be
-#             misinterpreted.
-#
-##############################################################################
+
+=pod
+
+=head2 EscapeXML
+
+Simple function to make sure that no bad characters make it into
+in the XML string that might cause the string to be
+misinterpreted.
+
+=cut
+
 sub EscapeXML
 {
     my $data = shift;
@@ -3067,11 +3112,15 @@ sub EscapeXML
 
 
 ##############################################################################
-#
-# UnescapeXML - Simple function to take an escaped string and return it to
-#               normal.
-#
-##############################################################################
+
+=pod
+
+=head2 UnescapeXML
+
+Simple function to take an escaped string and return it to normal.
+
+=cut
+
 sub UnescapeXML
 {
     my $data = shift;
@@ -3090,11 +3139,16 @@ sub UnescapeXML
 
 
 ##############################################################################
-#
-# BuildXML - takes one of the data formats that XML::Stream supports and call
-#            the proper BuildXML_xxx function on it.
-#
-##############################################################################
+
+=pod
+
+=head2 BuildXML
+
+Takes one of the data formats that XML::Stream supports and call
+the proper BuildXML_xxx function on it.
+
+=cut
+
 sub BuildXML
 {
     return &XML::Stream::Node::BuildXML(@_) if (ref($_[0]) eq "XML::Stream::Node");
@@ -3113,10 +3167,15 @@ sub BuildXML
 ##############################################################################
 
 ##############################################################################
-#
-# ConstXMLNS - Return the namespace from the constant string.
-#
-##############################################################################
+
+=pod
+
+=head2 ConstXMLNS
+
+Return the namespace from the constant string.
+
+=cut
+
 sub ConstXMLNS
 {
     my $const = shift;
@@ -3287,13 +3346,18 @@ sub Host2SID
 
 
 ##############################################################################
-#
-# NewSID - returns a session ID to send to an incoming stream in the return
-#          header.  By default it just increments a counter and returns that,
-#          or you can define a function and set it using the SetCallBacks
-#          function.
-#
-##############################################################################
+
+=pod
+
+=head2 NewSID
+
+Returns a session ID to send to an incoming stream in the return
+header.  By default it just increments a counter and returns that,
+or you can define a function and set it using the SetCallBacks
+function.
+
+=cut
+
 sub NewSID
 {
     my $self = shift;
@@ -3529,14 +3593,15 @@ sub sprintData
 
 =head1 VARIABLES
 
-  $NONBLOCKING - tells the Parser to enter into a nonblocking state.  This
-                 might cause some funky behavior since you can get nested
-                 callbacks while things are waiting.  1=on, 0=off(default).
+  $NONBLOCKING
+
+Tells the Parser to enter into a nonblocking state.  This
+might cause some funky behavior since you can get nested
+callbacks while things are waiting.  1=on, 0=off(default).
 
 =head1 EXAMPLES
 
-  ##########################
-  # simple example
+simple example
 
   use XML::Stream qw( Tree );
 
@@ -3559,8 +3624,7 @@ sub sprintData
   $stream->Disconnect();
 
 
-  ###########################
-  # example using a handler
+Example using a handler
 
   use XML::Stream qw( Tree );
 

@@ -55,6 +55,7 @@ This module licensed under the LGPL, version 2.1.
 =cut
 
 use strict;
+use warnings;
 use vars qw( $VERSION );
 
 $VERSION = "1.23_04";

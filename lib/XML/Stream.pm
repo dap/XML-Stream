@@ -68,6 +68,7 @@ XML::Stream - Creates an XML Stream connection and parses return data
 
 use 5.008;
 use strict;
+use warnings;
 use Sys::Hostname;
 use IO::Socket;
 use IO::Select;

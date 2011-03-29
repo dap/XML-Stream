@@ -30,6 +30,7 @@ package XML::Stream::XPath::Op;
 
 use 5.008;
 use strict;
+use warnings;
 use vars qw( $VERSION );
 
 $VERSION = "1.23_04";

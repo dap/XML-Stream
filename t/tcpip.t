@@ -1,3 +1,6 @@
+use strict;
+use warnings;
+
 use Test::More tests=>4;
 
 BEGIN{ use_ok("XML::Stream","Node"); }

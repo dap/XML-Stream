@@ -63,211 +63,12 @@ XML::Stream - Creates an XML Stream connection and parses return data
 
 =head1 METHODS
 
-  new(debug=>string,       - creates the XML::Stream object.  debug
-      debugfh=>FileHandle,   should be set to the path for the debug log
-      debuglevel=>0|1|N,     to be written.  If set to "stdout" then the
-      debugtime=>0|1,        debug will go there.   Also, you can specify
-      style=>string)         a filehandle that already exists byt using
-                             debugfh.  debuglevel determines the amount
-                             of debug to generate.  0 is the least, 1 is
-                             a little more, N is the limit you want.
-                             debugtime determines wether a timestamp
-                             should be preappended to the entry.  style
-                             defines the way the data structure is
-                             returned.  The two available styles are:
-
-                               tree - XML::Parser Tree format
-                               node - XML::Stream::Node format
-
-                             For more information see the respective man
-                             pages.
-
-  Connect(hostname=>string,       - opens a tcp connection to the
-          port=>integer,            specified server and sends the proper
-          to=>string,               opening XML Stream tag.  hostname,
-          from=>string,             port, and namespace are required.
-          myhostname=>string,       namespaces allows you to use
-          namespace=>string,        XML::Stream::Namespace objects.
-          namespaces=>array,        to is needed if you want the stream
-          connectiontype=>string,   to attribute to be something other
-          ssl=>0|1,                 than the hostname you are connecting
-          ssl_verify                to.  from is needed if you want the
-            =>0x00|0x01|0x02|0x04,  stream from attribute to be something
-          ssl_ca_path=>string,      other than the hostname you are
-          srv=>string)              connecting from.  myhostname should
-                                    not be needed but if the module
-                                    cannot determine your hostname
-                                    properly (check the debug log), set
-                                    this to the correct value, or if you
-                                    want the other side of the  stream to
-                                    think that you are someone else.  The
-                                    type determines the kind of
-                                    connection that is made:
-                                      "tcpip"    - TCP/IP (default)
-                                      "stdinout" - STDIN/STDOUT
-                                      "http"     - HTTP
-                                    HTTP recognizes proxies if the ENV
-                                    variables http_proxy or https_proxy
-                                    are set.
-                                    
-                                    ssl specifies whether an SSL socket
-                                    should be used for encrypted co-
-                                    mmunications.
-                                    
-                                    ssl_verify determines whether peer
-                                    certificate verification takes place.
-                                    See the documentation for the
-                                    SSL_verify_mode parameter to
-                                    L<IO::Socket::SSL->new()|IO::Socket::SSL>.
-                                    The default value is 0x01 causing the
-                                    server certificate to be verified, and
-                                    requiring that ssl_ca_path be set.
-
-                                    ssl_ca_path should be set to the path to
-                                    either a directory containing hashed CA
-                                    certificates, or a single file containing
-                                    acceptable CA certifictes concatenated
-                                    together. This parameter is required if
-                                    ssl_verify is set to anything other than
-                                    0x00 (no verification).
-
-                                    If srv is specified AND Net::DNS is
-                                    installed and can be loaded, then
-                                    an SRV query is sent to srv.hostname
-                                    and the results processed to replace
-                                    the hostname and port.  If the lookup
-                                    fails, or Net::DNS cannot be loaded,
-                                    then hostname and port are left alone
-                                    as the defaults.
-
-                                    This function returns the same hash from GetRoot()
-                                    below. Make sure you get the SID
-                                    (Session ID) since you have to use it
-                                    to call most other functions in here.
-
-
-  OpenFile(string) - opens a filehandle to the argument specified, and
-                     pretends that it is a stream.  It will ignore the
-                     outer tag, and not check if it was a
-                     <stream:stream/>. This is useful for writing a
-                     program that has to parse any XML file that is
-                     basically made up of small packets (like RDF).
-
-  Disconnect(sid) - sends the proper closing XML tag and closes the
-                    specified socket down.
-
-  Process(integer) - waits for data to be available on the socket.  If
-                     a timeout is specified then the Process function
-                     waits that period of time before returning nothing.
-                     If a timeout period is not specified then the
-                     function blocks until data is received.  The
-                     function returns a hash with session ids as the key,
-                     and status values or data as the hash values.
-
-  SetCallBacks(node=>function,   - sets the callback that should be
-               update=>function)   called in various situations.  node
-                                   is used to handle the data structures
-                                   that are built for each top level tag.
-                                   Update is used for when Process is
-                                   blocking waiting for data, but you
-                                   want your original code to be updated.
-
-  GetRoot(sid) - returns the attributes that the stream:stream tag sent
-                 by the other end listed in a hash for the specified
-                 session.
-
-  GetSock(sid) - returns a pointer to the IO::Socket object for the
-                 specified session.
-
-  Send(sid,    - sends the string over the specified connection as is.
-       string)   This does no checking if valid XML was sent or not.
-                 Best behavior when sending information.
-
-  GetErrorCode(sid) - returns a string for the specified session that
-                      will hopefully contain some useful information
-                      about why Process or Connect returned an undef
-                      to you.
-
-  XPath(node,path) - returns an array of results that match the xpath.
-                     node can be any of the three types (Tree, Node).
-
-=head1 VARIABLES
-
-  $NONBLOCKING - tells the Parser to enter into a nonblocking state.  This
-                 might cause some funky behavior since you can get nested
-                 callbacks while things are waiting.  1=on, 0=off(default).
-
-=head1 EXAMPLES
-
-  ##########################
-  # simple example
-
-  use XML::Stream qw( Tree );
-
-  $stream = new XML::Stream;
-
-  my $status = $stream->Connect(hostname => "jabber.org",
-                                port => 5222,
-                                namespace => "jabber:client");
-
-  if (!defined($status)) {
-    print "ERROR: Could not connect to server\n";
-    print "       (",$stream->GetErrorCode(),")\n";
-    exit(0);
-  }
-
-  while($node = $stream->Process()) {
-    # do something with $node
-  }
-
-  $stream->Disconnect();
-
-
-  ###########################
-  # example using a handler
-
-  use XML::Stream qw( Tree );
-
-  $stream = new XML::Stream;
-  $stream->SetCallBacks(node=>\&noder);
-  $stream->Connect(hostname => "jabber.org",
-		   port => 5222,
-		   namespace => "jabber:client",
-		   timeout => undef) || die $!;
-
-  # Blocks here forever, noder is called for incoming
-  # packets when they arrive.
-  while(defined($stream->Process())) { }
-
-  print "ERROR: Stream died (",$stream->GetErrorCode(),")\n";
-
-  sub noder
-  {
-    my $sid = shift;
-    my $node = shift;
-    # do something with $node
-  }
-
-=head1 AUTHOR
-
-Tweaked, tuned, and brightness changes by Ryan Eatmon, reatmon@ti.com
-in May of 2000.
-Colorized, and Dolby Surround sound added by Thomas Charron,
-tcharron@jabber.org
-By Jeremie in October of 1999 for http://etherx.jabber.org/streams/
-
-Currently maintained by Darian Anthony Patrick.
-
-=head1 COPYRIGHT
-
-Copyright (C) 1998-2004 Jabber Software Foundation http://jabber.org/
-
-This module licensed under the LGPL, version 2.1.
 
 =cut
 
 use 5.008;
 use strict;
+use warnings;
 use Sys::Hostname;
 use IO::Socket;
 use IO::Select;
@@ -347,7 +148,38 @@ sub import
     }
 }
 
+=pod
 
+=head2 new
+
+
+  new(debug=>string,
+      debugfh=>FileHandle,
+      debuglevel=>0|1|N,
+      debugtime=>0|1,
+      style=>string)
+
+Creates the XML::Stream object.  debug
+should be set to the path for the debug log
+to be written.  If set to "stdout" then the
+debug will go there.   Also, you can specify
+a filehandle that already exists byt using
+debugfh.  debuglevel determines the amount
+of debug to generate.  0 is the least, 1 is
+a little more, N is the limit you want.
+debugtime determines wether a timestamp
+should be preappended to the entry.  style
+defines the way the data structure is
+returned.  The two available styles are:
+
+  tree - XML::Parser Tree format
+  node - XML::Stream::Node format
+
+For more information see the respective man
+pages.
+
+=cut
+ 
 sub new
 {
     my $proto = shift;
@@ -389,7 +221,7 @@ sub new
         $self->{DEBUG} = 1;
         if (lc($args{debug}) eq "stdout")
         {
-            $self->{DEBUGFILE} = new FileHandle(">&STDERR");
+            $self->{DEBUGFILE} = FileHandle->new(">&STDERR");
             $self->{DEBUGFILE}->autoflush(1);
         }
         else
@@ -398,7 +230,7 @@ sub new
             {
                 if (-w $args{debug})
                 {
-                    $self->{DEBUGFILE} = new FileHandle(">$args{debug}");
+                    $self->{DEBUGFILE} = FileHandle->new(">$args{debug}");
                     $self->{DEBUGFILE}->autoflush(1);
                 }
                 else
@@ -410,7 +242,7 @@ sub new
             }
             else
             {
-                $self->{DEBUGFILE} = new FileHandle(">$args{debug}");
+                $self->{DEBUGFILE} = FileHandle->new(">$args{debug}");
                 if (defined($self->{DEBUGFILE}))
                 {
                     $self->{DEBUGFILE}->autoflush(1);
@@ -471,14 +303,19 @@ sub new
 ##############################################################################
 
 ##############################################################################
-#
-# Listen - starts the stream by listening on a port for someone to connect,
-#          and send the opening stream tag, and then sending a response based
-#          on if the received header was correct for this stream.  Server
-#          name, port, and namespace are required otherwise we don't know
-#          where to listen and what namespace to accept.
-#
-##############################################################################
+
+=pod
+
+=head2 Listen
+
+Starts the stream by listening on a port for someone to connect,
+and send the opening stream tag, and then sending a response based
+on if the received header was correct for this stream.  Server
+name, port, and namespace are required otherwise we don't know
+where to listen and what namespace to accept.
+
+=cut
+
 sub Listen
 {
     my $self = shift;
@@ -536,7 +373,7 @@ sub Listen
     while($self->{SIDS}->{$serverid}->{sock} == 0)
     {
         $self->{SIDS}->{$serverid}->{sock} =
-            new IO::Socket::INET(LocalHost=>$self->{SIDS}->{$serverid}->{hostname},
+            IO::Socket::INET->new(LocalHost=>$self->{SIDS}->{$serverid}->{hostname},
                                  LocalPort=>$self->{SIDS}->{$serverid}->{port},
                                  Reuse=>1,
                                  Listen=>10,
@@ -548,9 +385,9 @@ sub Listen
     $self->{SIDS}->{$serverid}->{sock}->autoflush(1);
 
     $self->{SELECT} =
-        new IO::Select($self->{SIDS}->{$serverid}->{sock});
+        IO::Select->new($self->{SIDS}->{$serverid}->{sock});
     $self->{SIDS}->{$serverid}->{select} =
-        new IO::Select($self->{SIDS}->{$serverid}->{sock});
+        IO::Select->new($self->{SIDS}->{$serverid}->{sock});
 
     $self->{SOCKETS}->{$self->{SIDS}->{$serverid}->{sock}} = "$serverid";
 
@@ -559,10 +396,15 @@ sub Listen
 
 
 ##############################################################################
-#
-# ConnectionAccept - accept an incoming connection.
-#
-##############################################################################
+
+=pod
+
+=head2 ConnectionAccept
+
+Accept an incoming connection.
+
+=cut
+
 sub ConnectionAccept
 {
     my $self = shift;
@@ -585,7 +427,7 @@ sub ConnectionAccept
     # Create the XML::Stream::Parser and register our callbacks
     #-------------------------------------------------------------------------
     $self->{SIDS}->{$sid}->{parser} =
-        new XML::Stream::Parser(%{$self->{DEBUGARGS}},
+        XML::Stream::Parser->new(%{$self->{DEBUGARGS}},
                                 nonblocking=>$NONBLOCKING,
                                 sid=>$sid,
                                 style=>$self->{DATASTYLE},
@@ -597,7 +439,7 @@ sub ConnectionAccept
                                );
 
     $self->{SIDS}->{$sid}->{select} =
-        new IO::Select($self->{SIDS}->{$sid}->{sock});
+        IO::Select->new($self->{SIDS}->{$sid}->{sock});
     $self->{SIDS}->{$sid}->{connectiontype} = "tcpip";
     $self->{SOCKETS}->{$self->{SIDS}->{$sid}->{sock}} = $sid;
 
@@ -614,11 +456,16 @@ sub ConnectionAccept
 
 
 ##############################################################################
-#
-# Respond - If this is a listening socket then we need to respond to the
-#           opening <stream:stream/>.
-#
-##############################################################################
+
+=pod
+
+=head2 Respond
+
+If this is a listening socket then we need to respond to the
+opening <stream:stream/>.
+
+=cut
+
 sub Respond
 {
     my $self = shift;
@@ -678,13 +525,101 @@ sub Respond
 ##############################################################################
 
 ##############################################################################
-#
-# Connect - starts the stream by connecting to the server, sending the opening
-#           stream tag, and then waiting for a response and verifying that it
-#           is correct for this stream.  Server name, port, and namespace are
-#           required otherwise we don't know where to send the stream to...
-#
-##############################################################################
+
+=pod
+
+=head2 Connect
+
+Starts the stream by connecting to the server, sending the opening
+stream tag, and then waiting for a response and verifying that it
+is correct for this stream.  Server name, port, and namespace are
+required otherwise we don't know where to send the stream to...
+
+  Connect(hostname=>string,       
+          port=>integer, 
+          to=>string,             
+          from=>string,           
+          myhostname=>string,     
+          namespace=>string,      
+          namespaces=>array,      
+          connectiontype=>string, 
+          ssl=>0|1,
+          ssl_verify =>0x00|0x01|0x02|0x04,
+          ssl_ca_path=>string,
+          srv=>string)
+
+Opens a tcp connection to the
+specified server and sends the proper
+opening XML Stream tag.  C<hostname>,
+C<port>, and C<namespace> are required.
+namespaces allows you to use
+XML::Stream::Namespace objects.
+
+C<to> is needed if you want the stream
+to attribute to be something other
+than the hostname you are connecting
+to.
+
+C<from> is needed if you want the
+stream from attribute to be something
+other than the hostname you are
+connecting from.
+
+C<myhostname> should
+not be needed but if the module
+cannot determine your hostname
+properly (check the debug log), set
+this to the correct value, or if you
+want the other side of the  stream to
+think that you are someone else.  The
+type determines the kind of
+connection that is made:
+
+  "tcpip"    - TCP/IP (default)
+  "stdinout" - STDIN/STDOUT
+  "http"     - HTTP
+
+HTTP recognizes proxies if the ENV
+variables http_proxy or https_proxy
+are set.
+
+C<ssl> specifies whether an SSL socket
+should be used for encrypted co-
+mmunications.
+
+C<ssl_verify> determines whether peer
+certificate verification takes place.
+See the documentation for the
+SSL_verify_mode parameter to
+L<IO::Socket::SSL->new()|IO::Socket::SSL>.
+The default value is 0x01 causing the
+server certificate to be verified, and
+requiring that ssl_ca_path be set.
+
+C<ssl_ca_path> should be set to the path to
+either a directory containing hashed CA
+certificates, or a single file containing
+acceptable CA certifictes concatenated
+together. This parameter is required if
+ssl_verify is set to anything other than
+0x00 (no verification).
+
+If srv is specified AND Net::DNS is
+installed and can be loaded, then
+an SRV query is sent to srv.hostname
+and the results processed to replace
+the hostname and port.  If the lookup
+fails, or Net::DNS cannot be loaded,
+then hostname and port are left alone
+as the defaults.
+
+This function returns the same hash from GetRoot()
+below. Make sure you get the SID
+(Session ID) since you have to use it
+to call most other functions in here.
+
+=cut
+
 sub Connect
 {
     my $self = shift;
@@ -795,7 +730,7 @@ sub Connect
         # abort ourselves and let the user check $! on his own.
         #-----------------------------------------------------------------------
         $self->{SIDS}->{newconnection}->{sock} =
-            new IO::Socket::INET(PeerAddr=>$self->{SIDS}->{newconnection}->{hostname},
+            IO::Socket::INET->new(PeerAddr=>$self->{SIDS}->{newconnection}->{hostname},
                                  PeerPort=>$self->{SIDS}->{newconnection}->{port},
                                  Proto=>"tcp",
                                  (($timeout ne "") ? ( Timeout=>$timeout ) : ()),
@@ -824,7 +759,7 @@ sub Connect
     if ($self->{SIDS}->{newconnection}->{connectiontype} eq "stdinout")
     {
         $self->{SIDS}->{newconnection}->{sock} =
-            new FileHandle(">&STDOUT");
+            FileHandle->new(">&STDOUT");
     }  
 
     #---------------------------------------------------------------------------
@@ -861,7 +796,7 @@ sub Connect
             else
             {
                 require HTTP::ProxyAutoConfig;
-                $PAC = new HTTP::ProxyAutoConfig();
+                $PAC = HTTP::ProxyAutoConfig->new();
             }
         }
 
@@ -927,7 +862,7 @@ sub Connect
 
             $self->debug(1,"Connect: Combo #0: Create normal socket");
             $self->{SIDS}->{newconnection}->{sock} =
-            new IO::Socket::INET(PeerAddr=>$self->{SIDS}->{newconnection}->{hostname},
+            IO::Socket::INET->new(PeerAddr=>$self->{SIDS}->{newconnection}->{hostname},
                                  PeerPort=>$self->{SIDS}->{newconnection}->{port},
                                  Proto=>"tcp",
                                  (($timeout ne "") ? ( Timeout=>$timeout ) : ()),
@@ -956,7 +891,7 @@ sub Connect
 
             $self->debug(1,"Connect: Combo #1: PUT through http_proxy");
             $self->{SIDS}->{newconnection}->{sock} =
-                new IO::Socket::INET(PeerAddr=>$self->{SIDS}->{newconnection}->{httpproxyhostname},
+                IO::Socket::INET->new(PeerAddr=>$self->{SIDS}->{newconnection}->{httpproxyhostname},
                                      PeerPort=>$self->{SIDS}->{newconnection}->{httpproxyport},
                                      Proto=>"tcp",
                                      (($timeout ne "") ? ( Timeout=>$timeout ) : ()),
@@ -985,7 +920,7 @@ sub Connect
 
             $self->debug(1,"Connect: Combo #2: CONNECT through http_proxy");
             $self->{SIDS}->{newconnection}->{sock} =
-                new IO::Socket::INET(PeerAddr=>$self->{SIDS}->{newconnection}->{httpproxyhostname},
+                IO::Socket::INET->new(PeerAddr=>$self->{SIDS}->{newconnection}->{httpproxyhostname},
                                      PeerPort=>$self->{SIDS}->{newconnection}->{httpproxyport},
                                      Proto=>"tcp",
                                      (($timeout ne "") ? ( Timeout=>$timeout ) : ()),
@@ -1012,7 +947,7 @@ sub Connect
         {
             $self->debug(1,"Connect: Combo #3: CONNECT through https_proxy");
             $self->{SIDS}->{newconnection}->{sock} =
-                new IO::Socket::INET(PeerAddr=>$self->{SIDS}->{newconnection}->{httpsproxyhostname},
+                IO::Socket::INET->new(PeerAddr=>$self->{SIDS}->{newconnection}->{httpsproxyhostname},
                                      PeerPort=>$self->{SIDS}->{newconnection}->{httpsproxyport},
                                      Proto=>"tcp");
             $connected = defined($self->{SIDS}->{newconnection}->{sock});
@@ -1068,10 +1003,15 @@ sub Connect
 
 
 ##############################################################################
-#
-# OpenStream - Send the opening stream and save the root element info.
-#
-##############################################################################
+
+=pod
+
+=head2 OpenStream
+
+Send the opening stream and save the root element info.
+
+=cut
+
 sub OpenStream
 {
     my $self = shift;
@@ -1122,7 +1062,7 @@ sub OpenStream
     # Create the XML::Stream::Parser and register our callbacks
     #---------------------------------------------------------------------------
     $self->{SIDS}->{$currsid}->{parser} =
-        new XML::Stream::Parser(%{$self->{DEBUGARGS}},
+        XML::Stream::Parser->new(%{$self->{DEBUGARGS}},
                                 nonblocking=>$NONBLOCKING,
                                 sid=>$currsid,
                                 style=>$self->{DATASTYLE},
@@ -1134,18 +1074,18 @@ sub OpenStream
                                );
 
     $self->{SIDS}->{$currsid}->{select} =
-        new IO::Select($self->{SIDS}->{$currsid}->{sock});
+        IO::Select->new($self->{SIDS}->{$currsid}->{sock});
 
     if (($self->{SIDS}->{$currsid}->{connectiontype} eq "tcpip") ||
             ($self->{SIDS}->{$currsid}->{connectiontype} eq "http"))
     {
-        $self->{SELECT} = new IO::Select($self->{SIDS}->{$currsid}->{sock});
+        $self->{SELECT} = IO::Select->new($self->{SIDS}->{$currsid}->{sock});
         $self->{SOCKETS}->{$self->{SIDS}->{$currsid}->{sock}} = "newconnection";
     }
 
     if ($self->{SIDS}->{$currsid}->{connectiontype} eq "stdinout")
     {
-        $self->{SELECT} = new IO::Select(*STDIN);
+        $self->{SELECT} = IO::Select->new(*STDIN);
         $self->{SOCKETS}->{$self->{SIDS}->{$currsid}->{sock}} = $currsid;
         $self->{SOCKETS}->{*STDIN} = $currsid;
         $self->{SIDS}->{$currsid}->{select}->add(*STDIN);
@@ -1233,11 +1173,25 @@ sub OpenStream
 
 
 ##############################################################################
-#
-# OpenFile - starts the stream by opening a file and setting it up so that
-#            Process reads from the filehandle to get the incoming stream.
-#
-##############################################################################
+
+=pod
+
+=head2 OpenFile
+
+Starts the stream by opening a file and setting it up so that
+Process reads from the filehandle to get the incoming stream.
+
+ OpenFile(string)
+
+Opens a filehandle to the argument specified, and
+pretends that it is a stream.  It will ignore the
+outer tag, and not check if it was a
+<stream:stream/>. This is useful for writing a
+program that has to parse any XML file that is
+basically made up of small packets (like RDF).
+
+=cut
+
 sub OpenFile
 {
     my $self = shift;
@@ -1247,7 +1201,7 @@ sub OpenFile
 
     $self->{SIDS}->{newconnection}->{connectiontype} = "file";
 
-    $self->{SIDS}->{newconnection}->{sock} = new FileHandle($file);
+    $self->{SIDS}->{newconnection}->{sock} = FileHandle->new($file);
     $self->{SIDS}->{newconnection}->{sock}->autoflush(1);
 
     $self->RegisterPrefix("newconnection",&ConstXMLNS("stream"),"stream");
@@ -1256,7 +1210,7 @@ sub OpenFile
     # Create the XML::Stream::Parser and register our callbacks
     #---------------------------------------------------------------------------
     $self->{SIDS}->{newconnection}->{parser} =
-        new XML::Stream::Parser(%{$self->{DEBUGARGS}},
+        XML::Stream::Parser->new(%{$self->{DEBUGARGS}},
                     nonblocking=>$NONBLOCKING,
                     sid=>"newconnection",
                     style=>$self->{DATASTYLE},
@@ -1271,19 +1225,19 @@ sub OpenFile
     # so we fake it out using XML::Stream::IO::Select::Win32
     if ( $^O =~ /mswin32/i ) {
         $self->{SIDS}->{newconnection}->{select}
-            = new XML::Stream::IO::Select::Win32(
+            = XML::Stream::IO::Select::Win32->new(
                 $self->{SIDS}->{newconnection}->{sock});
 
         $self->{SELECT}
-            = new XML::Stream::IO::Select::Win32(
+            = XML::Stream::IO::Select::Win32->new(
                 $self->{SIDS}->{newconnection}->{sock});
     }
     else {
         $self->{SIDS}->{newconnection}->{select}
-            = new IO::Select($self->{SIDS}->{newconnection}->{sock});
+            = IO::Select->new($self->{SIDS}->{newconnection}->{sock});
 
         $self->{SELECT}
-            = new IO::Select($self->{SIDS}->{newconnection}->{sock});
+            = IO::Select->new($self->{SIDS}->{newconnection}->{sock});
     }
 
     $self->{SIDS}->{newconnection}->{status} = 0;
@@ -1332,10 +1286,19 @@ sub OpenFile
 ##############################################################################
 
 ##############################################################################
-#
-# Disconnect - sends the closing XML tag and shuts down the socket.
-#
-##############################################################################
+
+=pod
+
+=head2 Disconnect
+
+sends the closing XML tag and shuts down the socket.
+
+  Disconnect(sid)
+
+Sends the proper closing XML tag and closes the specified socket down.
+
+=cut
+
 sub Disconnect
 {
     my $self = shift;
@@ -1355,10 +1318,15 @@ sub Disconnect
 
 
 ##############################################################################
-#
-# InitConnection - Initialize the connection data structure
-#
-##############################################################################
+
+=pod
+
+=head2 InitConnection
+
+Initialize the connection data structure
+
+=cut
+
 sub InitConnection
 {
     my $self = shift;
@@ -1411,13 +1379,18 @@ sub InitConnection
 
 
 ##############################################################################
-#
-# ParseStream - takes the incoming stream and makes sure that only full
-#               XML tags gets passed to the parser.  If a full tag has not
-#               read yet, then the Stream saves the incomplete part and
-#               sends the rest to the parser.
-#
-##############################################################################
+
+=pod
+
+=head2 ParseStream
+
+Takes the incoming stream and makes sure that only full
+XML tags gets passed to the parser.  If a full tag has not
+read yet, then the Stream saves the incomplete part and
+sends the rest to the parser.
+
+=cut
+
 sub ParseStream
 {
     my $self = shift;
@@ -1442,14 +1415,29 @@ sub ParseStream
 
 
 ##############################################################################
-#
-# Process - checks for data on the socket and returns a status code depending
-#           on if there was data or not.  If a timeout is not defined in the
-#           call then the timeout defined in Connect() is used.  If a timeout
-#           of 0 is used then the call blocks until it gets some data,
-#           otherwise it returns after the timeout period.
-#
-##############################################################################
+
+=pod
+
+=head2 Process
+
+Checks for data on the socket and returns a status code depending
+on if there was data or not.  If a timeout is not defined in the
+call then the timeout defined in Connect() is used.  If a timeout
+of 0 is used then the call blocks until it gets some data,
+otherwise it returns after the timeout period.
+
+  Process(integer)
+
+Waits for data to be available on the socket.  If
+a timeout is specified then the Process function
+waits that period of time before returning nothing.
+If a timeout period is not specified then the
+function blocks until data is received.  The
+function returns a hash with session ids as the key,
+and status values or data as the hash values.
+
+=cut
+
 sub Process
 {
     my $self = shift;
@@ -1644,10 +1632,16 @@ sub Process
 
 
 ##############################################################################
-#
-# Read - Takes the data from the server and returns a string
-#
-##############################################################################
+
+=pod
+
+
+=head2 Read
+
+Takes the data from the server and returns a string
+
+=cut
+
 sub Read
 {
     my $self = shift;
@@ -1694,11 +1688,22 @@ sub Read
 }
 
 
-##############################################################################
-#
-# Send - Takes the data string and sends it to the server
-#
-##############################################################################
+#############################################################################
+
+=pod
+
+=head2 Send
+
+Takes the data string and sends it to the server
+
+  Send(sid, string);
+
+Sends the string over the specified connection as is.
+This does no checking if valid XML was sent or not.
+Best behavior when sending information.
+
+=cut
+
 sub Send
 {
     my $self = shift;
@@ -1781,10 +1786,15 @@ sub Send
 ##############################################################################
 
 ##############################################################################
-#
-# ProcessStreamFeatures - process the <stream:featutres/> block.
-#
-##############################################################################
+
+=pod
+
+=head2 ProcessStreamFeatures
+
+Process the <stream:featutres/> block.
+
+=cut
+
 sub ProcessStreamFeatures
 {
     my $self = shift;
@@ -1845,10 +1855,15 @@ sub ProcessStreamFeatures
 
 
 ##############################################################################
-#
-# GetStreamFeature - Return the value of the stream feature (if any).
-#
-##############################################################################
+
+=pod
+
+=head2 GetStreamFeature
+
+Return the value of the stream feature (if any).
+
+=cut
+
 sub GetStreamFeature
 {
     my $self = shift;
@@ -1861,10 +1876,15 @@ sub GetStreamFeature
 
 
 ##############################################################################
-#
-# ReceivedStreamFeatures - Have we received the stream:features yet?
-#
-##############################################################################
+
+=pod
+
+=head2 ReceivedStreamFeatures
+
+Have we received the stream:features yet?
+
+=cut
+
 sub ReceivedStreamFeatures
 {
     my $self = shift;
@@ -1886,10 +1906,15 @@ sub ReceivedStreamFeatures
 ##############################################################################
 
 ##############################################################################
-#
-# ProcessTLSPacket - process a TLS based packet.
-#
-##############################################################################
+
+=pod
+
+=head2 ProcessTLSPacket
+
+Process a TLS based packet.
+
+=cut
+
 sub ProcessTLSPacket
 {
     my $self = shift;
@@ -1911,10 +1936,15 @@ sub ProcessTLSPacket
 
 
 ##############################################################################
-#
-# StartTLS - client function to have the socket start TLS.
-#
-##############################################################################
+
+=pod
+
+=head2 StartTLS
+
+Client function to have the socket start TLS.
+
+=cut
+
 sub StartTLS
 {
     my $self = shift;
@@ -1941,10 +1971,15 @@ sub StartTLS
 
 
 ##############################################################################
-#
-# TLSStartTLS - send a <starttls/> in the TLS namespace.
-#
-##############################################################################
+
+=pod
+
+=head2 TLSStartTLS
+
+Send a <starttls/> in the TLS namespace.
+
+=cut
+
 sub TLSStartTLS
 {
     my $self = shift;
@@ -1955,10 +1990,15 @@ sub TLSStartTLS
 
 
 ##############################################################################
-#
-# TLSClientProceed - handle a <proceed/> packet.
-#
-##############################################################################
+
+=pod
+
+=head2 TLSClientProceed
+
+Handle a <proceed/> packet.
+
+=cut
+
 sub TLSClientProceed
 {
     my $self = shift;
@@ -1989,10 +2029,15 @@ sub TLSClientProceed
 
 
 ##############################################################################
-#
-# TLSClientSecure - return 1 if the socket is secure, 0 otherwise.
-#
-##############################################################################
+
+=pod
+
+=head2 TLSClientSecure
+
+Return 1 if the socket is secure, 0 otherwise.
+
+=cut
+
 sub TLSClientSecure
 {
     my $self = shift;
@@ -2003,10 +2048,15 @@ sub TLSClientSecure
 
 
 ##############################################################################
-#
-# TLSClientDone - return 1 if the TLS process is done
-#
-##############################################################################
+
+=pod
+
+=head2 TLSClientDone
+
+Return 1 if the TLS process is done
+
+=cut
+
 sub TLSClientDone
 {
     my $self = shift;
@@ -2017,10 +2067,15 @@ sub TLSClientDone
 
 
 ##############################################################################
-#
-# TLSClientError - return the TLS error if any
-#
-##############################################################################
+
+=pod
+
+=head2 TLSClientError
+
+return the TLS error if any
+
+=cut
+
 sub TLSClientError
 {
     my $self = shift;
@@ -2031,10 +2086,15 @@ sub TLSClientError
 
 
 ##############################################################################
-#
-# TLSClientFailure - handle a <failure/>
-#
-##############################################################################
+
+=pod
+
+=head2 TLSClientFailure
+
+Handle a <failure/>
+
+=cut
+
 sub TLSClientFailure
 {
     my $self = shift;
@@ -2049,10 +2109,16 @@ sub TLSClientFailure
 
 
 ##############################################################################
-#
-# TLSFailure - Send a <failure/> in the TLS namespace
-#
-##############################################################################
+
+
+=pod
+
+=head2 TLSFailure
+
+Send a <failure/> in the TLS namespace
+
+=cut
+
 sub TLSFailure
 {
     my $self = shift;
@@ -2074,10 +2140,16 @@ sub TLSFailure
 ##############################################################################
 
 ##############################################################################
-#
-# ProcessSASLPacket - process a SASL based packet.
-#
-##############################################################################
+
+
+=pod
+
+=head2 ProcessSASLPacket
+
+Process a SASL based packet.
+
+=cut
+
 sub ProcessSASLPacket
 {
     my $self = shift;
@@ -2104,11 +2176,16 @@ sub ProcessSASLPacket
 
 
 ##############################################################################
-#
-# SASLAnswerChallenge - when we get a <challenge/> we need to do the grunt
-#                       work to return a <response/>.
-#
-##############################################################################
+
+=pod
+
+=head2 SASLAnswerChallenge
+
+When we get a <challenge/> we need to do the grunt
+work to return a <response/>.
+
+=cut
+
 sub SASLAnswerChallenge
 {
     my $self = shift;
@@ -2137,10 +2214,16 @@ sub SASLAnswerChallenge
 
 
 ##############################################################################
-#
-# SASLAuth - send an <auth/> in the SASL namespace
-#
-##############################################################################
+
+
+=pod
+
+=head2 SASLAuth
+
+Send an <auth/> in the SASL namespace
+
+=cut
+
 sub SASLAuth
 {
     my $self = shift;
@@ -2154,10 +2237,15 @@ sub SASLAuth
 
 
 ##############################################################################
-#
-# SASLChallenge - Send a <challenge/> in the SASL namespace
-#
-##############################################################################
+
+=pod
+
+=head2 SASLChallenge
+
+Send a <challenge/> in the SASL namespace
+
+=cut
+
 sub SASLChallenge
 {
     my $self = shift;
@@ -2169,11 +2257,16 @@ sub SASLChallenge
 
 
 ###############################################################################
-#
-# SASLClient - This is a helper function to perform all of the required steps
-#              for doing SASL with the server.
-#
-###############################################################################
+
+
+=pod
+
+=head2 SASLClient
+
+This is a helper function to perform all of the required steps for doing SASL with the server.
+
+=cut
+
 sub SASLClient
 {
     my $self = shift;
@@ -2194,7 +2287,7 @@ sub SASLClient
 
     my $authname = $username . '@' . $domain;
     
-    my $sasl = new Authen::SASL(mechanism=>join(" ",@{$mechanisms}),
+    my $sasl = Authen::SASL->new(mechanism=>join(" ",@{$mechanisms}),
                                 callback=>{
                                            authname => $authname,
 
@@ -2214,10 +2307,15 @@ sub SASLClient
 
 
 ##############################################################################
-#
-# SASLClientAuthed - return 1 if we authed via SASL, 0 otherwise
-#
-##############################################################################
+
+=pod
+
+=head2 SASLClientAuthed
+
+Return 1 if we authed via SASL, 0 otherwise
+
+=cut
+
 sub SASLClientAuthed
 {
     my $self = shift;
@@ -2228,10 +2326,15 @@ sub SASLClientAuthed
 
 
 ##############################################################################
-#
-# SASLClientDone - return 1 if the SASL process is finished
-#
-##############################################################################
+
+=pod
+
+=head2 SASLClientDone
+
+Return 1 if the SASL process is finished
+
+=cut
+
 sub SASLClientDone
 {
     my $self = shift;
@@ -2242,10 +2345,15 @@ sub SASLClientDone
 
 
 ##############################################################################
-#
-# SASLClientError - return the error if any
-#
-##############################################################################
+
+=pod
+
+=head2 SASLClientError
+
+Return the error if any
+
+=cut
+
 sub SASLClientError
 {
     my $self = shift;
@@ -2256,10 +2364,15 @@ sub SASLClientError
 
 
 ##############################################################################
-#
-# SASLClientFailure - handle a received <failure/>
-#
-##############################################################################
+
+=pod
+
+=head2 SASLClientFailure
+
+Handle a received <failure/>
+
+=cut
+
 sub SASLClientFailure
 {
     my $self = shift;
@@ -2274,10 +2387,15 @@ sub SASLClientFailure
 
 
 ##############################################################################
-#
-# SASLClientSuccess - handle a received <success/>
-#
-##############################################################################
+
+=pod
+
+=head2 SASLClientSuccess
+
+handle a received <success/>
+
+=cut
+
 sub SASLClientSuccess
 {
     my $self = shift;
@@ -2290,10 +2408,15 @@ sub SASLClientSuccess
 
 
 ##############################################################################
-#
-# SASLFailure - Send a <failure/> tag in the SASL namespace
-#
-##############################################################################
+
+=pod
+
+=head2 SASLFailure
+
+Send a <failure/> tag in the SASL namespace
+
+=cut
+
 sub SASLFailure
 {
     my $self = shift;
@@ -2305,10 +2428,15 @@ sub SASLFailure
 
 
 ##############################################################################
-#
-# SASLResponse - Send a <response/> tag in the SASL namespace
-#
-##############################################################################
+
+=pod
+
+=head2 SASLResponse
+
+Send a <response/> tag in the SASL namespace
+
+=cut
+
 sub SASLResponse
 {
     my $self = shift;
@@ -2471,11 +2599,23 @@ sub _node
 ##############################################################################
 
 ##############################################################################
-#
-# GetErrorCode - if you are returned an undef, you can call this function
-#                and hopefully learn more information about the problem.
-#
-##############################################################################
+
+=pod
+
+=head2 GetErrorCode
+
+if you are returned an undef, you can call this function
+and hopefully learn more information about the problem.
+
+  GetErrorCode(sid)
+
+returns a string for the specified session that
+will hopefully contain some useful information
+about why Process or Connect returned an undef
+to you.
+
+=cut
+
 sub GetErrorCode
 {
     my $self = shift;
@@ -2561,11 +2701,16 @@ sub ProcessStreamError
 
 
 ##############################################################################
-#
-# StreamError - Given a type and text, generate a <stream:error/> packet to
-#               send back to the other side.
-#
-##############################################################################
+
+=pod
+
+=head2 StreamError
+
+Given a type and text, generate a <stream:error/> packet to
+send back to the other side.
+
+=cut
+
 sub StreamError
 {
     my $self = shift;
@@ -2677,23 +2822,28 @@ sub MarkActivity
 ##############################################################################
 
 ##############################################################################
-#
-# SetXMLData - takes a host of arguments and sets a portion of the specified
-#              data strucure with that data.  The function works in two
-#              modes "single" or "multiple".  "single" denotes that the
-#              function should locate the current tag that matches this
-#              data and overwrite it's contents with data passed in.
-#              "multiple" denotes that a new tag should be created even if
-#              others exist.
-#
-#              type    - single or multiple
-#              XMLTree - pointer to XML::Stream data object (tree or node)
-#              tag     - name of tag to create/modify (if blank assumes
-#                        working with top level tag)
-#              data    - CDATA to set for tag
-#              attribs - attributes to ADD to tag
-#
-##############################################################################
+
+=pod
+
+=head2 SetXMLData
+
+Takes a host of arguments and sets a portion of the specified
+data strucure with that data.  The function works in two
+modes "single" or "multiple".  "single" denotes that the
+function should locate the current tag that matches this
+data and overwrite it's contents with data passed in.
+"multiple" denotes that a new tag should be created even if
+others exist.
+
+type    - single or multiple
+XMLTree - pointer to XML::Stream data object (tree or node)
+tag     - name of tag to create/modify (if blank assumes
+          working with top level tag)
+data    - CDATA to set for tag
+attribs - attributes to ADD to tag
+
+=cut
+
 sub SetXMLData
 {
     return &XML::Stream::Node::SetXMLData(@_) if (ref($_[1]) eq "XML::Stream::Node");
@@ -2702,46 +2852,61 @@ sub SetXMLData
 
 
 ##############################################################################
-#
-# GetXMLData - takes a host of arguments and returns various data structures
-#              that match them.
-#
-#              type - "existence" - returns 1 or 0 if the tag exists in the
-#                                   top level.
-#                     "value" - returns either the CDATA of the tag, or the
-#                               value of the attribute depending on which is
-#                               sought.  This ignores any mark ups to the data
-#                               and just returns the raw CDATA.
-#                     "value array" - returns an array of strings representing
-#                                     all of the CDATA in the specified tag.
-#                                     This ignores any mark ups to the data
-#                                     and just returns the raw CDATA.
-#                     "tree" - returns a data structure that represents the
-#                              XML with the specified tag as the root tag.
-#                              Depends on the format that you are working with.
-#                     "tree array" - returns an array of data structures each
-#                                    with the specified tag as the root tag.
-#                     "child array" - returns a list of all children nodes
-#                                     not including CDATA nodes.
-#                     "attribs" - returns a hash with the attributes, and
-#                                 their values, for the things that match
-#                                 the parameters
-#                     "count" - returns the number of things that match
-#                               the arguments
-#                     "tag" - returns the root tag of this tree
-#              XMLTree - pointer to XML::Stream data structure
-#              tag     - tag to pull data from.  If blank then the top level
-#                        tag is accessed.
-#              attrib  - attribute value to retrieve.  Ignored for types
-#                        "value array", "tree", "tree array".  If paired
-#                        with value can be used to filter tags based on
-#                        attributes and values.
-#              value   - only valid if an attribute is supplied.  Used to
-#                        filter for tags that only contain this attribute.
-#                        Useful to search through multiple tags that all
-#                        reference different name spaces.
-#
-##############################################################################
+
+=pod
+
+=head2 GetXMLData
+
+Takes a host of arguments and returns various data structures
+that match them.
+
+type C<existence> - returns 1 or 0 if the tag exists in the top level.
+
+C<value> - returns either the CDATA of the tag, or the
+value of the attribute depending on which is
+sought.  This ignores any mark ups to the data
+and just returns the raw CDATA.
+
+C<value array>
+returns an array of strings representing
+all of the CDATA in the specified tag.
+This ignores any mark ups to the data
+and just returns the raw CDATA.
+
+C<tree> - returns a data structure that represents the
+XML with the specified tag as the root tag.
+Depends on the format that you are working with.
+
+C<tree array> returns an array of data structures each
+with the specified tag as the root tag.
+
+C<child array> - returns a list of all children nodes
+                not including CDATA nodes.
+
+C<attribs> - returns a hash with the attributes, and
+            their values, for the things that match
+            the parameters
+
+C<count> - returns the number of things that match
+          the arguments
+
+C<tag> - returns the root tag of this tree
+
+XMLTree - pointer to XML::Stream data structure
+
+C<tag>  - tag to pull data from.  If blank then the top level
+          tag is accessed.
+C<attrib>  - attribute value to retrieve.  Ignored for types
+          "value array", "tree", "tree array".  If paired
+          with value can be used to filter tags based on
+          attributes and values.
+C<value>   - only valid if an attribute is supplied.  Used to
+          filter for tags that only contain this attribute.
+          Useful to search through multiple tags that all
+          reference different name spaces.
+
+=cut
+
 sub GetXMLData
 {
     return &XML::Stream::Node::GetXMLData(@_) if (ref($_[1]) eq "XML::Stream::Node");
@@ -2750,16 +2915,24 @@ sub GetXMLData
 
 
 ##############################################################################
-#
-# XPath - run an xpath query on a node and return back the result.
-#
-##############################################################################
+
+=pod
+
+=head2 XPath
+
+Run an xpath query on a node and return back the result.
+
+XPath(node,path) returns an array of results that match the xpath.
+node can be any of the three types (Tree, Node).
+
+=cut
+
 sub XPath
 {
     my $tree = shift;
     my $path = shift;
     
-    my $query = new XML::Stream::XPath::Query($path);
+    my $query = XML::Stream::XPath::Query->new($path);
     my $result = $query->execute($tree);
     if ($result->check())
     {
@@ -2776,46 +2949,56 @@ sub XPath
 
 
 ##############################################################################
-#
-# XPathCheck - run an xpath query on a node and return 1 or 0 if the path is
-#              valid.
-#
-##############################################################################
+
+=pod
+
+=head2 XPathCheck
+
+Run an xpath query on a node and return 1 or 0 if the path is
+valid.
+
+=cut
+
 sub XPathCheck
 {
     my $tree = shift;
     my $path = shift;
     
-    my $query = new XML::Stream::XPath::Query($path);
+    my $query = XML::Stream::XPath::Query->new($path);
     my $result = $query->execute($tree);
     return $result->check();
 }
 
 
 ##############################################################################
-#
-# XML2Config - takes an XML data tree and turns it into a hash of hashes.
-#              This only works for certain kinds of XML trees like this:
-#
-#                <foo>
-#                  <bar>1</bar>
-#                  <x>
-#                    <y>foo</y>
-#                  </x>
-#                  <z>5</z>
-#                  <z>6</z>
-#                </foo>
-#
-#              The resulting hash would be:
-#
-#                $hash{bar} = 1;
-#                $hash{x}->{y} = "foo";
-#                $hash{z}->[0] = 5;
-#                $hash{z}->[1] = 6;
-#
-#              Good for config files.
-#
-##############################################################################
+
+=pod
+
+=head2 XML2Config
+
+Takes an XML data tree and turns it into a hash of hashes.
+This only works for certain kinds of XML trees like this:
+
+                <foo>
+                  <bar>1</bar>
+                  <x>
+                    <y>foo</y>
+                  </x>
+                  <z>5</z>
+                  <z>6</z>
+                </foo>
+
+The resulting hash would be:
+
+                $hash{bar} = 1;
+                $hash{x}->{y} = "foo";
+                $hash{z}->[0] = 5;
+                $hash{z}->[1] = 6;
+
+Good for config files.
+
+=cut
+
 sub XML2Config
 {
     return &XML::Stream::Node::XML2Config(@_) if (ref($_[0]) eq "XML::Stream::Node");
@@ -2824,29 +3007,34 @@ sub XML2Config
 
 
 ##############################################################################
-#
-# Config2XML - takes a hash and produces an XML string from it.  If the hash
-#              looks like this:
-#
-#                $hash{bar} = 1;
-#                $hash{x}->{y} = "foo";
-#                $hash{z}->[0] = 5;
-#                $hash{z}->[1] = 6;
-#
-#              The resulting xml would be:
-#
-#                <foo>
-#                  <bar>1</bar>
-#                  <x>
-#                    <y>foo</y>
-#                  </x>
-#                  <z>5</z>
-#                  <z>6</z>
-#                </foo>
-#
-#              Good for config files.
-#
-##############################################################################
+
+=pod
+
+
+=head2 Config2XML
+
+Takes a hash and produces an XML string from it.  If the hash looks like this:
+
+                $hash{bar} = 1;
+                $hash{x}->{y} = "foo";
+                $hash{z}->[0] = 5;
+                $hash{z}->[1] = 6;
+
+The resulting xml would be:
+
+                <foo>
+                  <bar>1</bar>
+                  <x>
+                    <y>foo</y>
+                  </x>
+                  <z>5</z>
+                  <z>6</z>
+                </foo>
+
+Good for config files.
+
+=cut
+
 sub Config2XML
 {
     my ($tag,$hash,$indent) = @_;
@@ -2896,12 +3084,17 @@ sub Config2XML
 
 
 ##############################################################################
-#
-# EscapeXML - Simple function to make sure that no bad characters make it into
-#             in the XML string that might cause the string to be
-#             misinterpreted.
-#
-##############################################################################
+
+=pod
+
+=head2 EscapeXML
+
+Simple function to make sure that no bad characters make it into
+in the XML string that might cause the string to be
+misinterpreted.
+
+=cut
+
 sub EscapeXML
 {
     my $data = shift;
@@ -2920,11 +3113,15 @@ sub EscapeXML
 
 
 ##############################################################################
-#
-# UnescapeXML - Simple function to take an escaped string and return it to
-#               normal.
-#
-##############################################################################
+
+=pod
+
+=head2 UnescapeXML
+
+Simple function to take an escaped string and return it to normal.
+
+=cut
+
 sub UnescapeXML
 {
     my $data = shift;
@@ -2943,11 +3140,16 @@ sub UnescapeXML
 
 
 ##############################################################################
-#
-# BuildXML - takes one of the data formats that XML::Stream supports and call
-#            the proper BuildXML_xxx function on it.
-#
-##############################################################################
+
+=pod
+
+=head2 BuildXML
+
+Takes one of the data formats that XML::Stream supports and call
+the proper BuildXML_xxx function on it.
+
+=cut
+
 sub BuildXML
 {
     return &XML::Stream::Node::BuildXML(@_) if (ref($_[0]) eq "XML::Stream::Node");
@@ -2966,10 +3168,15 @@ sub BuildXML
 ##############################################################################
 
 ##############################################################################
-#
-# ConstXMLNS - Return the namespace from the constant string.
-#
-##############################################################################
+
+=pod
+
+=head2 ConstXMLNS
+
+Return the namespace from the constant string.
+
+=cut
+
 sub ConstXMLNS
 {
     my $const = shift;
@@ -3034,12 +3241,22 @@ sub ns2prefix
 ##############################################################################
 
 ##############################################################################
-#
-# GetRoot - returns the hash of attributes for the root <stream:stream/> tag
-#           so that any attributes returned can be accessed.  from and any
-#           xmlns:foobar might be important.
-#
-##############################################################################
+
+=pod
+
+=head2 GetRoot
+
+Returns the hash of attributes for the root <stream:stream/> tag
+so that any attributes returned can be accessed.  from and any
+xmlns:foobar might be important.
+
+  GetRoot(sid)
+
+Returns the attributes that the stream:stream tag sent
+by the other end listed in a hash for the specified session.
+
+=cut
+
 sub GetRoot
 {
     my $self = shift;
@@ -3050,11 +3267,19 @@ sub GetRoot
 
 
 ##############################################################################
-#
-# GetSock - returns the Socket so that an outside function can access it if
-#           desired.
-#
-##############################################################################
+
+=pod
+
+=head2 GetSock
+
+returns the Socket so that an outside function can access it if desired.
+
+  GetSock(sid)
+
+Returns a pointer to the IO::Socket object for the specified session.
+
+=cut
+
 sub GetSock
 {
     my $self = shift;
@@ -3122,13 +3347,18 @@ sub Host2SID
 
 
 ##############################################################################
-#
-# NewSID - returns a session ID to send to an incoming stream in the return
-#          header.  By default it just increments a counter and returns that,
-#          or you can define a function and set it using the SetCallBacks
-#          function.
-#
-##############################################################################
+
+=pod
+
+=head2 NewSID
+
+Returns a session ID to send to an incoming stream in the return
+header.  By default it just increments a counter and returns that,
+or you can define a function and set it using the SetCallBacks
+function.
+
+=cut
+
 sub NewSID
 {
     my $self = shift;
@@ -3139,11 +3369,24 @@ sub NewSID
 
 
 ###########################################################################
-#
-# SetCallBacks - Takes a hash with top level tags to look for as the keys
-#                and pointers to functions as the values.
-#
-###########################################################################
+
+=pod
+
+=head2 SetCallBacks
+
+Takes a hash with top level tags to look for as the keys
+and pointers to functions as the values.
+
+  SetCallBacks(node=>function, update=>function);
+
+Sets the callback that should be called in various situations.
+
+C<node> is used to handle the data structures that are built for each top level tag.
+C<update> is used for when Process is blocking waiting for data, but you
+want your original code to be updated.
+
+=cut
+
 sub SetCallBacks
 {
     my $self = shift;
@@ -3347,5 +3590,81 @@ sub sprintData
     return $outString;
 }
 
+=pod
+
+=head1 VARIABLES
+
+  $NONBLOCKING
+
+Tells the Parser to enter into a nonblocking state.  This
+might cause some funky behavior since you can get nested
+callbacks while things are waiting.  1=on, 0=off(default).
+
+=head1 EXAMPLES
+
+simple example
+
+  use XML::Stream qw( Tree );
+
+  $stream = XML::Stream->new;
+
+  my $status = $stream->Connect(hostname => "jabber.org",
+                                port => 5222,
+                                namespace => "jabber:client");
+
+  if (!defined($status)) {
+    print "ERROR: Could not connect to server\n";
+    print "       (",$stream->GetErrorCode(),")\n";
+    exit(0);
+  }
+
+  while($node = $stream->Process()) {
+    # do something with $node
+  }
+
+  $stream->Disconnect();
+
+
+Example using a handler
+
+  use XML::Stream qw( Tree );
+
+  $stream = XML::Stream->new;
+  $stream->SetCallBacks(node=>\&noder);
+  $stream->Connect(hostname => "jabber.org",
+		   port => 5222,
+		   namespace => "jabber:client",
+		   timeout => undef) || die $!;
+
+  # Blocks here forever, noder is called for incoming
+  # packets when they arrive.
+  while(defined($stream->Process())) { }
+
+  print "ERROR: Stream died (",$stream->GetErrorCode(),")\n";
+
+  sub noder
+  {
+    my $sid = shift;
+    my $node = shift;
+    # do something with $node
+  }
+
+=head1 AUTHOR
+
+Tweaked, tuned, and brightness changes by Ryan Eatmon, reatmon@ti.com
+in May of 2000.
+Colorized, and Dolby Surround sound added by Thomas Charron,
+tcharron@jabber.org
+By Jeremie in October of 1999 for http://etherx.jabber.org/streams/
+
+Currently maintained by Darian Anthony Patrick.
+
+=head1 COPYRIGHT
+
+Copyright (C) 1998-2004 Jabber Software Foundation http://jabber.org/
+
+This module licensed under the LGPL, version 2.1.
+
+=cut
 
 1;

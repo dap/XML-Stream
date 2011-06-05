@@ -1,3 +1,6 @@
+use strict;
+use warnings;
+
 use Test::More tests=>56;
 
 BEGIN{ use_ok( "XML::Stream","Tree", "Node" ); }
@@ -71,7 +74,7 @@ foreach my $xmlType ("tree","node")
 {
     $packetIndex = 0;
     
-    my $stream = new XML::Stream(style=>$xmlType);
+    my $stream = XML::Stream->new(style=>$xmlType);
     ok( defined($stream), "new() - $xmlType" );
     isa_ok( $stream, "XML::Stream" );
 

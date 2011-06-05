@@ -1,17 +1,17 @@
-BEGIN {print "1..9\n";}
-END {print "not ok 1\n" unless $loaded;}
-use XML::Stream qw( Tree Node );
-$loaded = 1;
-print "ok 1\n";
+use strict;
+use warnings;
+
+use Test::More tests=>9;
+use_ok 'XML::Stream', qw( Tree Node );
 
 my @tests;
 $tests[4] = 1;
 $tests[8] = 1;
 
-my $parser_tree = new XML::Stream::Parser(style=>"tree");
+my $parser_tree = XML::Stream::Parser->new(style=>"tree");
 my $tree = $parser_tree->parsefile("t/test.xml");
 
-%config = %{&XML::Stream::XML2Config($tree)};
+my %config = %{&XML::Stream::XML2Config($tree)};
 
 if (exists($config{blah})) {
   my @keys = keys(%{$config{blah}});
@@ -39,7 +39,7 @@ if (exists($config{last}->{test1}->{test2}->{test3})) {
 }
 
 
-my $parser_node = new XML::Stream::Parser(style=>"node");
+my $parser_node = XML::Stream::Parser->new(style=>"node");
 my $node = $parser_node->parsefile("t/test.xml");
 
 %config = %{&XML::Stream::XML2Config($node)};
@@ -70,7 +70,6 @@ if (exists($config{last}->{test1}->{test2}->{test3})) {
 
 
 foreach (2..9) {
-  print "not " unless $tests[$_];
-  print "ok $_\n";
+  ok $tests[$_];
 }
 

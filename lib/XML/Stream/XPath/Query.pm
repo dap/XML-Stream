@@ -24,6 +24,7 @@ package XML::Stream::XPath::Query;
 
 use 5.008;
 use strict;
+use warnings;
 use Carp;
 use vars qw( $VERSION );
 
@@ -111,7 +112,7 @@ sub getOp
             {
                 $$pos = $pos_start;
                 my $temp_ident = $self->getNextIdentifier($pos);
-                $ret_op = new XML::Stream::XPath::NodeOp($temp_ident,"0");
+                $ret_op = XML::Stream::XPath::NodeOp->new($temp_ident,"0");
             }
             elsif ($token eq "/")
             {
@@ -119,20 +120,20 @@ sub getOp
                 {
                     $$pos++;
                     my $temp_ident = $self->getNextIdentifier($pos);
-                    $ret_op = new XML::Stream::XPath::AllOp($temp_ident);
+                    $ret_op = XML::Stream::XPath::AllOp->new($temp_ident);
                 }
                 else
                 {
                     my $temp_ident = $self->getNextIdentifier($pos);
                     if ($temp_ident ne "")
                     {
-                        $ret_op = new XML::Stream::XPath::NodeOp($temp_ident,($pos_start == 0 ? "1" : "0"));
+                        $ret_op = XML::Stream::XPath::NodeOp->new($temp_ident,($pos_start == 0 ? "1" : "0"));
                     }
                 }
             }
             elsif ($token eq "\@")
             {
-                $ret_op = new XML::Stream::XPath::AttributeOp($self->getNextIdentifier($pos));
+                $ret_op = XML::Stream::XPath::AttributeOp->new($self->getNextIdentifier($pos));
             }
             elsif ($token eq "]")
             {
@@ -150,7 +151,7 @@ sub getOp
             elsif (($token eq "\"") || ($token eq "\'"))
             {
                 $$pos = index($self->{QUERY},$token,$token_start);
-                $ret_op = new XML::Stream::XPath::Op("LITERAL",substr($self->{QUERY},$token_start,$$pos-$token_start));
+                $ret_op = XML::Stream::XPath::Op->new("LITERAL",substr($self->{QUERY},$token_start,$$pos-$token_start));
                 $$pos++;
             }
             elsif ($token eq " ")
@@ -165,7 +166,7 @@ sub getOp
                         confess("Invalid 'and' operation");
                         return;
                     }
-                    $ret_op = new XML::Stream::XPath::AndOp($self->{OPS}->[$#{$self->{OPS}}],$tmp_op);
+                    $ret_op = XML::Stream::XPath::AndOp->new($self->{OPS}->[$#{$self->{OPS}}],$tmp_op);
                     $in_context = 0;
                     pop(@{$self->{OPS}});
                 }
@@ -178,7 +179,7 @@ sub getOp
                         confess("Invalid 'or' operation");
                         return;
                     }
-                    $ret_op = new XML::Stream::XPath::OrOp($self->{OPS}->[$#{$self->{OPS}}],$tmp_op);
+                    $ret_op = XML::Stream::XPath::OrOp->new($self->{OPS}->[$#{$self->{OPS}}],$tmp_op);
                     $in_context = 0;
                     pop(@{$self->{OPS}});
                 }
@@ -197,19 +198,19 @@ sub getOp
                     my $val = $self->getNextIdentifier($pos);
                     if ($val =~ /^\d+$/)
                     {
-                        $ret_op = new XML::Stream::XPath::PositionOp($val);
+                        $ret_op = XML::Stream::XPath::PositionOp->new($val);
                         $$pos++;
                     }
                     else
                     {
                         $$pos = $pos_start + 1;
-                        $ret_op = new XML::Stream::XPath::ContextOp($self->getOp($pos,$token));
+                        $ret_op = XML::Stream::XPath::ContextOp->new($self->getOp($pos,$token));
                     }
                 }
                 else
                 {
                     $$pos = $pos_start + 1;
-                    $ret_op = new XML::Stream::XPath::ContextOp($self->getOp($pos,$token));
+                    $ret_op = XML::Stream::XPath::ContextOp->new($self->getOp($pos,$token));
                 }
             }
             elsif ($token eq "(")
@@ -228,7 +229,7 @@ sub getOp
                 {
                     confess("Undefined function \"$function\"");
                 }
-                $ret_op = new XML::Stream::XPath::FunctionOp($function);
+                $ret_op = XML::Stream::XPath::FunctionOp->new($function);
 
                 my $op_pos = $#{$self->{OPS}} + 1;
 
@@ -269,7 +270,7 @@ sub getOp
                 {
                     $tmp_op = $self->getOp($pos);
                 }
-                $ret_op = new XML::Stream::XPath::EqualOp($self->{OPS}->[$#{$self->{OPS}}],$tmp_op);
+                $ret_op = XML::Stream::XPath::EqualOp->new($self->{OPS}->[$#{$self->{OPS}}],$tmp_op);
                 pop(@{$self->{OPS}});
             }
             elsif ($token eq "!")
@@ -285,7 +286,7 @@ sub getOp
                 {
                     $tmp_op = $self->getOp($pos);
                 }
-                $ret_op = new XML::Stream::XPath::NotEqualOp($self->{OPS}->[$#{$self->{OPS}}],$tmp_op);
+                $ret_op = XML::Stream::XPath::NotEqualOp->new($self->{OPS}->[$#{$self->{OPS}}],$tmp_op);
                 pop(@{$self->{OPS}});
             }
             else
@@ -344,7 +345,7 @@ sub execute
     my $self = shift;
     my $root = shift;
 
-    my $ctxt = new XML::Stream::XPath::Value($root);
+    my $ctxt = XML::Stream::XPath::Value->new($root);
 
     foreach my $op (@{$self->{OPS}})
     {

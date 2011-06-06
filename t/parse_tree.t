@@ -1,13 +1,13 @@
-BEGIN {print "1..5\n";}
-END {print "not ok 1\n" unless $loaded;}
+use strict;
+use warnings;
+
+use Test::More tests=>4;
 use XML::Stream qw( Tree );
-$loaded = 1;
-print "ok 1\n";
 
 my @tests;
 $tests[4] = 1;
 
-my $stream = new XML::Stream(style=>"tree");
+my $stream = XML::Stream->new(style=>"tree");
 
 $stream->SetCallBacks(node=>sub{ &onPacket(@_) });
 
@@ -18,8 +18,7 @@ while( %status = $stream->Process()) {
 }
 
 foreach (2..5) {
-  print "not " unless $tests[$_];
-  print "ok $_\n";
+  ok $tests[$_];
 }
 
 sub onPacket {

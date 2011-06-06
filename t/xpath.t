@@ -1,3 +1,6 @@
+use strict;
+use warnings;
+
 use Test::More tests=>105;
 
 BEGIN{ use_ok("XML::Stream","Node","Tree"); }
@@ -6,9 +9,9 @@ my @value;
 
 foreach my $type ("tree","node")
 {
-    my $parser = new XML::Stream::Parser(style=>$type);
+    my $parser = XML::Stream::Parser->new(style=>$type);
     isa_ok($parser,"XML::Stream::Parser");
-    $node = $parser->parsefile("t/test.xml");
+    my $node = $parser->parsefile("t/test.xml");
 
     isa_ok($node,"ARRAY") if ($type eq "tree");
     isa_ok($node,"XML::Stream::Node") if ($type eq "node");

@@ -28,41 +28,38 @@ XML::Stream - Creates an XML Stream connection and parses return data
 
 =head1 SYNOPSIS
 
-  XML::Stream is an attempt at solidifying the use of XML via streaming.
+XML::Stream is an attempt at solidifying the use of XML via streaming.
 
 =head1 DESCRIPTION
 
-  This module provides the user with methods to connect to a remote
-  server, send a stream of XML to the server, and receive/parse an XML
-  stream from the server.  It is primarily based work for the Etherx XML
-  router developed by the Jabber Development Team.  For more information
-  about this project visit http://xmpp.org/protocols/streams/.
+This module provides the user with methods to connect to a remote
+server, send a stream of XML to the server, and receive/parse an XML
+stream from the server.  It is primarily based work for the Etherx XML
+router developed by the Jabber Development Team.  For more information
+about this project visit http://xmpp.org/protocols/streams/.
 
-  XML::Stream gives the user the ability to define a central callback
-  that will be used to handle the tags received from the server.  These
-  tags are passed in the format defined at instantiation time.
-  the closing tag of an object is seen, the tree is finished and passed
-  to the call back function.  What the user does with it from there is up
-  to them.
+XML::Stream gives the user the ability to define a central callback
+that will be used to handle the tags received from the server.  These
+tags are passed in the format defined at instantiation time.
+the closing tag of an object is seen, the tree is finished and passed
+to the call back function.  What the user does with it from there is up
+to them.
 
-  For a detailed description of how this module works, and about the data
-  structure that it returns, please view the source of Stream.pm and
-  look at the detailed description at the end of the file.
-
-
-  NOTE: The parser that XML::Stream::Parser provides, as are most Perl
-  parsers, is synchronous.  If you are in the middle of parsing a
-  packet and call a user defined callback, the Parser is blocked until
-  your callback finishes.  This means you cannot be operating on a
-  packet, send out another packet and wait for a response to that packet.
-  It will never get to you.  Threading might solve this, but as we all
-  know threading in Perl is not quite up to par yet.  This issue will be
-  revisted in the future.
+For a detailed description of how this module works, and about the data
+structure that it returns, please view the source of Stream.pm and
+look at the detailed description at the end of the file.
 
 
+NOTE: The parser that XML::Stream::Parser provides, as are most Perl
+parsers, is synchronous.  If you are in the middle of parsing a
+packet and call a user defined callback, the Parser is blocked until
+your callback finishes.  This means you cannot be operating on a
+packet, send out another packet and wait for a response to that packet.
+It will never get to you.  Threading might solve this, but as we all
+know threading in Perl is not quite up to par yet.  This issue will be
+revisted in the future.
 
 =head1 METHODS
-
 
 =cut
 
@@ -172,8 +169,8 @@ should be preappended to the entry.  style
 defines the way the data structure is
 returned.  The two available styles are:
 
-  tree - XML::Parser Tree format
-  node - XML::Stream::Node format
+  tree - L<XML::Parser> Tree format
+  node - L<XML::Stream::Node> format
 
 For more information see the respective man
 pages.
@@ -1291,7 +1288,7 @@ sub OpenFile
 
 =head2 Disconnect
 
-sends the closing XML tag and shuts down the socket.
+Sends the closing XML tag and shuts down the socket.
 
   Disconnect(sid)
 

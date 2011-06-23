@@ -77,6 +77,7 @@ use MIME::Base64;
 use utf8;
 use Encode;
 use XML::Stream::IO::Select::Win32;
+use Scalar::Util qw(weaken);
 
 $SIG{PIPE} = "IGNORE";
 
@@ -282,6 +283,8 @@ sub new
     # on his own.
     #---------------------------------------------------------------------------
     $self->SetCallBacks(node=>sub { $self->_node(@_) });
+
+    weaken $self->{CB} if $self->{CB};
 
     $self->{IDCOUNT} = 0;
 

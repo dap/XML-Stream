@@ -14,6 +14,7 @@ WriteMakefile
                            'IO::Socket' => 0,
                            'MIME::Base64' => 0,
                            'POSIX' => 0,
+                           'Scalar::Util' => 0,
                            'Sys::Hostname' => 0,
                            'Test::More' => '0.92',
                            'utf8' => 0

@@ -29,6 +29,7 @@ my $build = Module::Build->new(
 		'POSIX'         => 0,
 		'Sys::Hostname' => 0,
 		'utf8'          => 0,
+		'Scalar::Util'  => 0,
 	},
 
 	sign               => 1,

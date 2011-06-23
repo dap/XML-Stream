@@ -1,3 +1,5 @@
+  - weaken cyclic references to eliminate memory leak
+
 1.23_04 2010-09-22
 ====
   - RT#57649 Set default value for _tls flag

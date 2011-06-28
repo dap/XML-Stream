@@ -116,7 +116,7 @@ else
 $VERSION = "1.23_04";
 $NONBLOCKING = 0;
 
-use XML::Stream::Namespace;
+#use XML::Stream::Namespace;
 use XML::Stream::Parser;
 use XML::Stream::XPath;
 

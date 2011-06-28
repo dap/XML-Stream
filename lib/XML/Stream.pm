@@ -149,30 +149,32 @@ sub import
 =head2 new
 
 
-  new(debug=>string,
-      debugfh=>FileHandle,
-      debuglevel=>0|1|N,
-      debugtime=>0|1,
-      style=>string)
+  new(
+      debug      => string,
+      debugfh    => FileHandle,
+      debuglevel => 0|1|N,
+      debugtime  => 0|1,
+      style      => string)
 
-Creates the XML::Stream object.  debug
-should be set to the path for the debug log
+Creates the XML::Stream object.
+B<debug> should be set to the path for the debug log
 to be written.  If set to "stdout" then the
-debug will go there.   Also, you can specify
-a filehandle that already exists byt using
-debugfh.  debuglevel determines the amount
-of debug to generate.  0 is the least, 1 is
-a little more, N is the limit you want.
-debugtime determines wether a timestamp
-should be preappended to the entry.  style
-defines the way the data structure is
+debug will go there. Also, you can specify
+a filehandle that already exists by using
+B<debugfh>.
+
+B<debuglevel> determines the amount of debug to generate.
+0 is the least, 1 is a little more, N is the limit you want.
+
+B<debugtime> determines wether a timestamp should be preappended
+to the entry.
+B<style> defines the way the data structure is
 returned.  The two available styles are:
 
   tree - L<XML::Parser> Tree format
   node - L<XML::Stream::Node> format
 
-For more information see the respective man
-pages.
+For more information see the respective man pages.
 
 =cut
  
@@ -193,7 +195,7 @@ sub new
         (($self->{DATASTYLE} eq "node") && !defined($XML::Stream::Node::LOADED))
        )
     {
-        croak("The style that you have chosen was not defined when you \"use\"d the module.\n");
+        croak( qq{The style that you have chosen was not defined when you "use"d the module.\n} );
     }
 
     $self->{DEBUGARGS} = \%args;

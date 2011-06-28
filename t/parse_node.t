@@ -1,7 +1,7 @@
 use strict;
 use warnings;
 
-use Test::More tests=>6;
+use Test::More tests => 6;
 use XML::Stream qw( Node );
 
 my @tests;
@@ -13,8 +13,7 @@ style=>"node");
 $stream->SetCallBacks(node=>sub{ &onPacket(@_) });
 
 my $sid = $stream->OpenFile("t/test.xml");
-my %status;
-while( %status = $stream->Process()) {
+while( my %status = $stream->Process()) {
   last if ($status{$sid} == -1);
 }
 

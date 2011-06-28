@@ -1,15 +1,15 @@
 use strict;
 use warnings;
 
-use Test::More tests=>4;
+use Test::More tests => 4;
 use XML::Stream qw( Tree );
 
 my @tests;
 $tests[4] = 1;
 
-my $stream = XML::Stream->new(style=>"tree");
+my $stream = XML::Stream->new(style => "tree");
 
-$stream->SetCallBacks(node=>sub{ &onPacket(@_) });
+$stream->SetCallBacks(node => sub{ onPacket(@_) });
 
 my $sid = $stream->OpenFile("t/test.xml");
 my %status;

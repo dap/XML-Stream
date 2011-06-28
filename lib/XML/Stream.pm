@@ -216,7 +216,7 @@ sub new
         $self->{DEBUGFILE} = $args{debugfh};
         $self->{DEBUG} = 1;
     }
-    if ($args{debugfh} eq "" || $args{debug} ne "")
+    elsif ($args{debug} ne "")
     {
         $self->{DEBUG} = 1;
         if (lc($args{debug}) eq "stdout")

@@ -208,13 +208,15 @@ sub new
 
     $self->{DEBUGFILE} = "";
 
-    if (exists($args{debugfh}) && ($args{debugfh} ne ""))
+    $args{debugfh} ||= '';
+    $args{debug}   ||= '';
+
+    if ($args{debugfh} ne "")
     {
         $self->{DEBUGFILE} = $args{debugfh};
         $self->{DEBUG} = 1;
     }
-    if ((exists($args{debugfh}) && ($args{debugfh} eq "")) ||
-        (exists($args{debug}) && ($args{debug} ne "")))
+    if ($args{debugfh} eq "" || $args{debug} ne "")
     {
         $self->{DEBUG} = 1;
         if (lc($args{debug}) eq "stdout")

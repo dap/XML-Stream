@@ -125,8 +125,6 @@ use XML::Stream::XPath;
 # Setup the exportable objects
 #
 ##############################################################################
-require Exporter;
-my @ISA = qw(Exporter);
 my @EXPORT_OK = qw(Tree Node);
 
 sub import

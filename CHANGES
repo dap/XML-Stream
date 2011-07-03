@@ -1,4 +1,9 @@
-  - weaken cyclic references to eliminate memory leak
+1.23_05 2011-06-23
+  - RT#8834 unindented POD so that it reformats properly (szabgab)
+  - Weaken cyclic references in XML::Stream to eliminate memory leak (szabgab)
+  - Increase use of warnings and strictures in tests and code (szabgab)
+  - Replace indirect object notation with direct invocation notation (szabgab)
+  - Replace manual TAP output with Test::More (szabgab)
 
 1.23_04 2010-09-22
 ====

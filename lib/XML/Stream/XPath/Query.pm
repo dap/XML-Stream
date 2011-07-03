@@ -28,7 +28,7 @@ use warnings;
 use Carp;
 use vars qw( $VERSION );
 
-$VERSION = "1.23_04";
+$VERSION = "1.23_05";
 
 sub new
 {

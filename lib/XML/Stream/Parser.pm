@@ -62,6 +62,7 @@ $VERSION = "1.23_05";
 
 use XML::Stream::Tree;
 use XML::Stream::Node;
+use XML::Stream::Tools;
 
 sub new
 {
@@ -83,63 +84,7 @@ sub new
     $args{nonblocking} = 0 unless exists($args{nonblocking});
 
     $self->{NONBLOCKING} = delete($args{nonblocking});
-
-    $self->{DEBUGTIME} = 0;
-    $self->{DEBUGTIME} = $args{debugtime} if exists($args{debugtime});
-
-    $self->{DEBUGLEVEL} = 0;
-    $self->{DEBUGLEVEL} = $args{debuglevel} if exists($args{debuglevel});
-
-    $self->{DEBUGFILE} = "";
-
-    if (exists($args{debugfh}) && ($args{debugfh} ne ""))
-    {
-        $self->{DEBUGFILE} = $args{debugfh};
-        $self->{DEBUG} = 1;
-    }
-
-    if ((exists($args{debugfh}) && ($args{debugfh} eq "")) ||
-        (exists($args{debug}) && ($args{debug} ne "")))
-        {
-        $self->{DEBUG} = 1;
-        if (lc($args{debug}) eq "stdout")
-        {
-            $self->{DEBUGFILE} = FileHandle->new(">&STDERR");
-            $self->{DEBUGFILE}->autoflush(1);
-        }
-        else
-        {
-            if (-e $args{debug})
-            {
-                if (-w $args{debug})
-                {
-                    $self->{DEBUGFILE} = FileHandle->new(">$args{debug}");
-                    $self->{DEBUGFILE}->autoflush(1);
-                }
-                else
-                {
-                    print "WARNING: debug file ($args{debug}) is not writable by you\n";
-                    print "         No debug information being saved.\n";
-                    $self->{DEBUG} = 0;
-                }
-            }
-            else
-            {
-                $self->{DEBUGFILE} = FileHandle->new(">$args{debug}");
-                if (defined($self->{DEBUGFILE}))
-                {
-                    $self->{DEBUGFILE}->autoflush(1);
-                }
-                else
-                {
-                    print "WARNING: debug file ($args{debug}) does not exist \n";
-                    print "         and is not writable by you.\n";
-                    print "         No debug information being saved.\n";
-                    $self->{DEBUG} = 0;
-                }
-            }
-        }
-    }
+    XML::Stream::Tools::setup_debug($self, %args); 
 
     $self->{SID} = exists($args{sid}) ? $args{sid} : "__xmlstream__:sid";
 

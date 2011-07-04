@@ -230,7 +230,9 @@ sub new
     # We are only going to use one callback, let the user call other callbacks
     # on his own.
     #---------------------------------------------------------------------------
-    $self->SetCallBacks(node=>sub { $self->_node(@_) });
+    my $weak = $self;
+    weaken $weak;
+    $self->SetCallBacks(node=>sub { $weak->_node(@_) });
 
     weaken $self->{CB} if $self->{CB};
 
@@ -3346,12 +3348,15 @@ want your original code to be updated.
 sub SetCallBacks
 {
     my $self = shift;
+
+    my $weak = $self;
+    weaken $weak;
     while($#_ >= 0) {
         my $func = pop(@_);
         my $tag = pop(@_);
         if (($tag eq "node") && !defined($func))
         {
-            $self->SetCallBacks(node=>sub { $self->_node(@_) });
+            $self->SetCallBacks(node=>sub { $weak->_node(@_) });
         }
         else
         {

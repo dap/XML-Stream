@@ -83,10 +83,13 @@ sub new
     $self->{ENTITY}->{"&apos;"} = "'";
     $self->{ENTITY}->{"&amp;"} = "&";
 
-    $self->{HANDLER}->{startDocument} = sub{ $self->startDocument(@_); };
-    $self->{HANDLER}->{endDocument} = sub{ $self->endDocument(@_); };
-    $self->{HANDLER}->{startElement} = sub{ $self->startElement(@_); };
-    $self->{HANDLER}->{endElement} = sub{ $self->endElement(@_); };
+use Scalar::Util qw(weaken);
+    my $weak = $self;
+    weaken $weak;
+    $self->{HANDLER}->{startDocument} = sub{ $weak->startDocument(@_); };
+    $self->{HANDLER}->{endDocument} = sub{ $weak->endDocument(@_); };
+    $self->{HANDLER}->{startElement} = sub{ $weak->startElement(@_); };
+    $self->{HANDLER}->{endElement} = sub{ $weak->endElement(@_); };
 
     $self->{STYLE} = "debug";
 

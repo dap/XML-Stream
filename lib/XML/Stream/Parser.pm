@@ -60,6 +60,8 @@ use vars qw( $VERSION );
 
 $VERSION = "1.23_05";
 
+use Scalar::Util qw(weaken);
+
 use XML::Stream::Tree;
 use XML::Stream::Node;
 use XML::Stream::Tools;
@@ -91,18 +93,20 @@ sub new
     $self->{STYLE} = (exists($args{style}) ? lc($args{style}) : "tree");
     $self->{DTD} = (exists($args{dtd}) ? lc($args{dtd}) : 0);
 
+    my $weak = $self;
+    weaken $weak;
     if ($self->{STYLE} eq "tree")
     {
-        $self->{HANDLER}->{startDocument} = sub{ $self->startDocument(@_); };
-        $self->{HANDLER}->{endDocument} = sub{ $self->endDocument(@_); };
+        $self->{HANDLER}->{startDocument} = sub{ $weak->startDocument(@_); };
+        $self->{HANDLER}->{endDocument} = sub{ $weak->endDocument(@_); };
         $self->{HANDLER}->{startElement} = sub{ &XML::Stream::Tree::_handle_element(@_); };
         $self->{HANDLER}->{endElement} = sub{ &XML::Stream::Tree::_handle_close(@_); };
         $self->{HANDLER}->{characters} = sub{ &XML::Stream::Tree::_handle_cdata(@_); };
     }
     elsif ($self->{STYLE} eq "node")
     {
-        $self->{HANDLER}->{startDocument} = sub{ $self->startDocument(@_); };
-        $self->{HANDLER}->{endDocument} = sub{ $self->endDocument(@_); };
+        $self->{HANDLER}->{startDocument} = sub{ $weak->startDocument(@_); };
+        $self->{HANDLER}->{endDocument} = sub{ $weak->endDocument(@_); };
         $self->{HANDLER}->{startElement} = sub{ &XML::Stream::Node::_handle_element(@_); };
         $self->{HANDLER}->{endElement} = sub{ &XML::Stream::Node::_handle_close(@_); };
         $self->{HANDLER}->{characters} = sub{ &XML::Stream::Node::_handle_cdata(@_); };
@@ -222,7 +226,9 @@ sub parse
             $self->{XML} = substr($self->{XML},length($self->{CNAME}->[$self->{CURR}])+3,length($self->{XML})-length($self->{CNAME}->[$self->{CURR}])-3);
 
             $self->{PARSING} = 0 if ($self->{NONBLOCKING} == 1);
-            &{$self->{HANDLER}->{endElement}}($self,$self->{CNAME}->[$self->{CURR}]);
+            my $weak = $self;
+            weaken $weak;
+            &{$self->{HANDLER}->{endElement}}($weak, $weak->{CNAME}->[$weak->{CURR}]);
             $self->{PARSING} = 1 if ($self->{NONBLOCKING} == 1);
 
             $self->{CURR}--;
@@ -266,11 +272,13 @@ sub parse
             {
             }
 
-            &{$self->{HANDLER}->{startElement}}($self,$name,%attribs);
+            my $weak = $self;
+            weaken $weak;
+            &{$self->{HANDLER}->{startElement}}($weak, $name,%attribs);
 
             if($empty == 1)
             {
-                &{$self->{HANDLER}->{endElement}}($self,$name);
+                &{$self->{HANDLER}->{endElement}}($weak, $name);
             }
             else
             {

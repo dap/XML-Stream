@@ -374,15 +374,17 @@ sub ConnectionAccept
     #-------------------------------------------------------------------------
     # Create the XML::Stream::Parser and register our callbacks
     #-------------------------------------------------------------------------
+    my $weak = $self;
+    weaken $weak;
     $self->{SIDS}->{$sid}->{parser} =
         XML::Stream::Parser->new(%{$self->{DEBUGARGS}},
                                 nonblocking=>$NONBLOCKING,
                                 sid=>$sid,
                                 style=>$self->{DATASTYLE},
                                 Handlers=>{
-                                    startElement=>sub{ $self->_handle_root(@_) },
-                                    endElement=>sub{ &{$HANDLERS{$self->{DATASTYLE}}->{endElement}}($self,@_) },
-                                    characters=>sub{ &{$HANDLERS{$self->{DATASTYLE}}->{characters}}($self,@_) },
+                                    startElement=>sub{ $weak->_handle_root(@_) },
+                                    endElement=>sub{ &{$HANDLERS{$weak->{DATASTYLE}}->{endElement}}($weak,@_) },
+                                    characters=>sub{ &{$HANDLERS{$weak->{DATASTYLE}}->{characters}}($weak,@_) },
                                 }
                                );
 
@@ -1009,15 +1011,17 @@ sub OpenStream
     #---------------------------------------------------------------------------
     # Create the XML::Stream::Parser and register our callbacks
     #---------------------------------------------------------------------------
+    my $weak = $self;
+    weaken $weak;
     $self->{SIDS}->{$currsid}->{parser} =
         XML::Stream::Parser->new(%{$self->{DEBUGARGS}},
                                 nonblocking=>$NONBLOCKING,
                                 sid=>$currsid,
                                 style=>$self->{DATASTYLE},
                                 Handlers=>{
-                                    startElement=>sub{ $self->_handle_root(@_) },
-                                    endElement=>sub{ &{$HANDLERS{$self->{DATASTYLE}}->{endElement}}($self,@_) },
-                                    characters=>sub{ &{$HANDLERS{$self->{DATASTYLE}}->{characters}}($self,@_) },
+                                    startElement=>sub{ $weak->_handle_root(@_) },
+                                    endElement=>sub{ &{$HANDLERS{$weak->{DATASTYLE}}->{endElement}}($weak, @_) },
+                                    characters=>sub{ &{$HANDLERS{$weak->{DATASTYLE}}->{characters}}($weak, @_) },
                                 }
                                );
 
@@ -1157,15 +1161,17 @@ sub OpenFile
     #---------------------------------------------------------------------------
     # Create the XML::Stream::Parser and register our callbacks
     #---------------------------------------------------------------------------
+    my $weak = $self;
+    weaken $weak;
     $self->{SIDS}->{newconnection}->{parser} =
         XML::Stream::Parser->new(%{$self->{DEBUGARGS}},
                     nonblocking=>$NONBLOCKING,
                     sid=>"newconnection",
                     style=>$self->{DATASTYLE},
                     Handlers=>{
-                         startElement=>sub{ $self->_handle_root(@_) },
-                         endElement=>sub{ &{$HANDLERS{$self->{DATASTYLE}}->{endElement}}($self,@_) },
-                         characters=>sub{ &{$HANDLERS{$self->{DATASTYLE}}->{characters}}($self,@_) },
+                         startElement=>sub{ $weak->_handle_root(@_) },
+                         endElement=>sub{ &{$HANDLERS{$weak->{DATASTYLE}}->{endElement}}($weak, @_) },
+                         characters=>sub{ &{$HANDLERS{$weak->{DATASTYLE}}->{characters}}($weak, @_) },
                         }
                  );
 
@@ -2506,9 +2512,11 @@ sub _handle_root
     # Now that we have gotten a root tag, let's look for the tags that make up
     # the stream.  Change the handler for a Start tag to another function.
     #---------------------------------------------------------------------------
-    $sax->setHandlers(startElement=>sub{ &{$HANDLERS{$self->{DATASTYLE}}->{startElement}}($self,@_) },
-                endElement=>sub{ &{$HANDLERS{$self->{DATASTYLE}}->{endElement}}($self,@_) },
-                characters=>sub{ &{$HANDLERS{$self->{DATASTYLE}}->{characters}}($self,@_) },
+    my $weak = $self;
+    weaken $weak;
+    $sax->setHandlers(startElement=>sub{ &{$HANDLERS{$weak->{DATASTYLE}}->{startElement}}($weak, @_) },
+                endElement=>sub{ &{$HANDLERS{$weak->{DATASTYLE}}->{endElement}}($weak, @_) },
+                characters=>sub{ &{$HANDLERS{$weak->{DATASTYLE}}->{characters}}($weak, @_) },
              );
 }
 

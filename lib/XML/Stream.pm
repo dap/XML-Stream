@@ -2188,7 +2188,15 @@ sub SASLAuth
     my $first_step = $self->{SIDS}->{$sid}->{sasl}->{client}->client_start();
     my $first_step64 = MIME::Base64::encode_base64($first_step,"");
 
-    $self->Send($sid,"<auth xmlns='".&ConstXMLNS('xmpp-sasl')."' mechanism='".$self->{SIDS}->{$sid}->{sasl}->{client}->mechanism()."'>".$first_step64."</auth>");
+    $self->Send($sid,
+        "<auth xmlns='" . &ConstXMLNS('xmpp-sasl') .
+        "' mechanism='" . $self->{SIDS}->{$sid}->{sasl}->{client}->mechanism() .
+# from http://blogs.perl.org/users/marco_fontani/2010/03/google-talk-with-perl.html
+# not yet in use
+#        "' " .
+#        q{xmlns:ga='http://www.google.com/talk/protocol/auth'
+#            ga:client-uses-full-bind-result='true'} .    # JID
+        "'>" . $first_step64 . "</auth>");
 }
 
 

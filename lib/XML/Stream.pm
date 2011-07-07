@@ -66,6 +66,7 @@ revisted in the future.
 use 5.008;
 use strict;
 use warnings;
+
 use Sys::Hostname;
 use IO::Socket;
 use IO::Select;
@@ -76,8 +77,10 @@ use Authen::SASL;
 use MIME::Base64;
 use utf8;
 use Encode;
-use XML::Stream::IO::Select::Win32;
 use Scalar::Util qw(weaken);
+
+use XML::Stream::IO::Select::Win32;
+use XML::Stream::Tools;
 
 $SIG{PIPE} = "IGNORE";
 
@@ -116,7 +119,7 @@ else
 $VERSION = "1.23_05";
 $NONBLOCKING = 0;
 
-use XML::Stream::Namespace;
+#use XML::Stream::Namespace;
 use XML::Stream::Parser;
 use XML::Stream::XPath;
 
@@ -125,8 +128,6 @@ use XML::Stream::XPath;
 # Setup the exportable objects
 #
 ##############################################################################
-require Exporter;
-my @ISA = qw(Exporter);
 my @EXPORT_OK = qw(Tree Node);
 
 sub import
@@ -151,30 +152,32 @@ sub import
 =head2 new
 
 
-  new(debug=>string,
-      debugfh=>FileHandle,
-      debuglevel=>0|1|N,
-      debugtime=>0|1,
-      style=>string)
+  new(
+      debug      => string,
+      debugfh    => FileHandle,
+      debuglevel => 0|1|N,
+      debugtime  => 0|1,
+      style      => string)
 
-Creates the XML::Stream object.  debug
-should be set to the path for the debug log
+Creates the XML::Stream object.
+B<debug> should be set to the path for the debug log
 to be written.  If set to "stdout" then the
-debug will go there.   Also, you can specify
-a filehandle that already exists byt using
-debugfh.  debuglevel determines the amount
-of debug to generate.  0 is the least, 1 is
-a little more, N is the limit you want.
-debugtime determines wether a timestamp
-should be preappended to the entry.  style
-defines the way the data structure is
+debug will go there. Also, you can specify
+a filehandle that already exists by using
+B<debugfh>.
+
+B<debuglevel> determines the amount of debug to generate.
+0 is the least, 1 is a little more, N is the limit you want.
+
+B<debugtime> determines wether a timestamp should be preappended
+to the entry.
+B<style> defines the way the data structure is
 returned.  The two available styles are:
 
   tree - L<XML::Parser> Tree format
   node - L<XML::Stream::Node> format
 
-For more information see the respective man
-pages.
+For more information see the respective man pages.
 
 =cut
  
@@ -195,66 +198,11 @@ sub new
         (($self->{DATASTYLE} eq "node") && !defined($XML::Stream::Node::LOADED))
        )
     {
-        croak("The style that you have chosen was not defined when you \"use\"d the module.\n");
+        croak( qq{The style that you have chosen was not defined when you "use"d the module.\n} );
     }
 
     $self->{DEBUGARGS} = \%args;
-
-    $self->{DEBUGTIME} = 0;
-    $self->{DEBUGTIME} = $args{debugtime} if exists($args{debugtime});
-
-    $self->{DEBUGLEVEL} = 0;
-    $self->{DEBUGLEVEL} = $args{debuglevel} if exists($args{debuglevel});
-
-    $self->{DEBUGFILE} = "";
-
-    if (exists($args{debugfh}) && ($args{debugfh} ne ""))
-    {
-        $self->{DEBUGFILE} = $args{debugfh};
-        $self->{DEBUG} = 1;
-    }
-    if ((exists($args{debugfh}) && ($args{debugfh} eq "")) ||
-        (exists($args{debug}) && ($args{debug} ne "")))
-    {
-        $self->{DEBUG} = 1;
-        if (lc($args{debug}) eq "stdout")
-        {
-            $self->{DEBUGFILE} = FileHandle->new(">&STDERR");
-            $self->{DEBUGFILE}->autoflush(1);
-        }
-        else
-        {
-            if (-e $args{debug})
-            {
-                if (-w $args{debug})
-                {
-                    $self->{DEBUGFILE} = FileHandle->new(">$args{debug}");
-                    $self->{DEBUGFILE}->autoflush(1);
-                }
-                else
-                {
-                    print "WARNING: debug file ($args{debug}) is not writable by you\n";
-                    print "         No debug information being saved.\n";
-                    $self->{DEBUG} = 0;
-                }
-            }
-            else
-            {
-                $self->{DEBUGFILE} = FileHandle->new(">$args{debug}");
-                if (defined($self->{DEBUGFILE}))
-                {
-                    $self->{DEBUGFILE}->autoflush(1);
-                }
-                else
-                {
-                    print "WARNING: debug file ($args{debug}) does not exist \n";
-                    print "         and is not writable by you.\n";
-                    print "         No debug information being saved.\n";
-                    $self->{DEBUG} = 0;
-                }
-            }
-        }
-    }
+    XML::Stream::Tools::setup_debug($self, %args); 
 
     my $hostname = hostname();
     my $address = gethostbyname($hostname) ||
@@ -282,7 +230,9 @@ sub new
     # We are only going to use one callback, let the user call other callbacks
     # on his own.
     #---------------------------------------------------------------------------
-    $self->SetCallBacks(node=>sub { $self->_node(@_) });
+    my $weak = $self;
+    weaken $weak;
+    $self->SetCallBacks(node=>sub { $weak->_node(@_) });
 
     weaken $self->{CB} if $self->{CB};
 
@@ -426,15 +376,17 @@ sub ConnectionAccept
     #-------------------------------------------------------------------------
     # Create the XML::Stream::Parser and register our callbacks
     #-------------------------------------------------------------------------
+    my $weak = $self;
+    weaken $weak;
     $self->{SIDS}->{$sid}->{parser} =
         XML::Stream::Parser->new(%{$self->{DEBUGARGS}},
                                 nonblocking=>$NONBLOCKING,
                                 sid=>$sid,
                                 style=>$self->{DATASTYLE},
                                 Handlers=>{
-                                    startElement=>sub{ $self->_handle_root(@_) },
-                                    endElement=>sub{ &{$HANDLERS{$self->{DATASTYLE}}->{endElement}}($self,@_) },
-                                    characters=>sub{ &{$HANDLERS{$self->{DATASTYLE}}->{characters}}($self,@_) },
+                                    startElement=>sub{ $weak->_handle_root(@_) },
+                                    endElement=>sub{ &{$HANDLERS{$weak->{DATASTYLE}}->{endElement}}($weak,@_) },
+                                    characters=>sub{ &{$HANDLERS{$weak->{DATASTYLE}}->{characters}}($weak,@_) },
                                 }
                                );
 
@@ -1061,15 +1013,17 @@ sub OpenStream
     #---------------------------------------------------------------------------
     # Create the XML::Stream::Parser and register our callbacks
     #---------------------------------------------------------------------------
+    my $weak = $self;
+    weaken $weak;
     $self->{SIDS}->{$currsid}->{parser} =
         XML::Stream::Parser->new(%{$self->{DEBUGARGS}},
                                 nonblocking=>$NONBLOCKING,
                                 sid=>$currsid,
                                 style=>$self->{DATASTYLE},
                                 Handlers=>{
-                                    startElement=>sub{ $self->_handle_root(@_) },
-                                    endElement=>sub{ &{$HANDLERS{$self->{DATASTYLE}}->{endElement}}($self,@_) },
-                                    characters=>sub{ &{$HANDLERS{$self->{DATASTYLE}}->{characters}}($self,@_) },
+                                    startElement=>sub{ $weak->_handle_root(@_) },
+                                    endElement=>sub{ &{$HANDLERS{$weak->{DATASTYLE}}->{endElement}}($weak, @_) },
+                                    characters=>sub{ &{$HANDLERS{$weak->{DATASTYLE}}->{characters}}($weak, @_) },
                                 }
                                );
 
@@ -1209,15 +1163,17 @@ sub OpenFile
     #---------------------------------------------------------------------------
     # Create the XML::Stream::Parser and register our callbacks
     #---------------------------------------------------------------------------
+    my $weak = $self;
+    weaken $weak;
     $self->{SIDS}->{newconnection}->{parser} =
         XML::Stream::Parser->new(%{$self->{DEBUGARGS}},
                     nonblocking=>$NONBLOCKING,
                     sid=>"newconnection",
                     style=>$self->{DATASTYLE},
                     Handlers=>{
-                         startElement=>sub{ $self->_handle_root(@_) },
-                         endElement=>sub{ &{$HANDLERS{$self->{DATASTYLE}}->{endElement}}($self,@_) },
-                         characters=>sub{ &{$HANDLERS{$self->{DATASTYLE}}->{characters}}($self,@_) },
+                         startElement=>sub{ $weak->_handle_root(@_) },
+                         endElement=>sub{ &{$HANDLERS{$weak->{DATASTYLE}}->{endElement}}($weak, @_) },
+                         characters=>sub{ &{$HANDLERS{$weak->{DATASTYLE}}->{characters}}($weak, @_) },
                         }
                  );
 
@@ -2232,7 +2188,15 @@ sub SASLAuth
     my $first_step = $self->{SIDS}->{$sid}->{sasl}->{client}->client_start();
     my $first_step64 = MIME::Base64::encode_base64($first_step,"");
 
-    $self->Send($sid,"<auth xmlns='".&ConstXMLNS('xmpp-sasl')."' mechanism='".$self->{SIDS}->{$sid}->{sasl}->{client}->mechanism()."'>".$first_step64."</auth>");
+    $self->Send($sid,
+        "<auth xmlns='" . &ConstXMLNS('xmpp-sasl') .
+        "' mechanism='" . $self->{SIDS}->{$sid}->{sasl}->{client}->mechanism() .
+# from http://blogs.perl.org/users/marco_fontani/2010/03/google-talk-with-perl.html
+# not yet in use
+#        "' " .
+#        q{xmlns:ga='http://www.google.com/talk/protocol/auth'
+#            ga:client-uses-full-bind-result='true'} .    # JID
+        "'>" . $first_step64 . "</auth>");
 }
 
 
@@ -2558,9 +2522,11 @@ sub _handle_root
     # Now that we have gotten a root tag, let's look for the tags that make up
     # the stream.  Change the handler for a Start tag to another function.
     #---------------------------------------------------------------------------
-    $sax->setHandlers(startElement=>sub{ &{$HANDLERS{$self->{DATASTYLE}}->{startElement}}($self,@_) },
-                endElement=>sub{ &{$HANDLERS{$self->{DATASTYLE}}->{endElement}}($self,@_) },
-                characters=>sub{ &{$HANDLERS{$self->{DATASTYLE}}->{characters}}($self,@_) },
+    my $weak = $self;
+    weaken $weak;
+    $sax->setHandlers(startElement=>sub{ &{$HANDLERS{$weak->{DATASTYLE}}->{startElement}}($weak, @_) },
+                endElement=>sub{ &{$HANDLERS{$weak->{DATASTYLE}}->{endElement}}($weak, @_) },
+                characters=>sub{ &{$HANDLERS{$weak->{DATASTYLE}}->{characters}}($weak, @_) },
              );
 }
 
@@ -3390,12 +3356,15 @@ want your original code to be updated.
 sub SetCallBacks
 {
     my $self = shift;
+
+    my $weak = $self;
+    weaken $weak;
     while($#_ >= 0) {
         my $func = pop(@_);
         my $tag = pop(@_);
         if (($tag eq "node") && !defined($func))
         {
-            $self->SetCallBacks(node=>sub { $self->_node(@_) });
+            $self->SetCallBacks(node=>sub { $weak->_node(@_) });
         }
         else
         {

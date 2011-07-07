@@ -60,8 +60,11 @@ use vars qw( $VERSION );
 
 $VERSION = "1.23_05";
 
+use Scalar::Util qw(weaken);
+
 use XML::Stream::Tree;
 use XML::Stream::Node;
+use XML::Stream::Tools;
 
 sub new
 {
@@ -83,81 +86,27 @@ sub new
     $args{nonblocking} = 0 unless exists($args{nonblocking});
 
     $self->{NONBLOCKING} = delete($args{nonblocking});
-
-    $self->{DEBUGTIME} = 0;
-    $self->{DEBUGTIME} = $args{debugtime} if exists($args{debugtime});
-
-    $self->{DEBUGLEVEL} = 0;
-    $self->{DEBUGLEVEL} = $args{debuglevel} if exists($args{debuglevel});
-
-    $self->{DEBUGFILE} = "";
-
-    if (exists($args{debugfh}) && ($args{debugfh} ne ""))
-    {
-        $self->{DEBUGFILE} = $args{debugfh};
-        $self->{DEBUG} = 1;
-    }
-
-    if ((exists($args{debugfh}) && ($args{debugfh} eq "")) ||
-        (exists($args{debug}) && ($args{debug} ne "")))
-        {
-        $self->{DEBUG} = 1;
-        if (lc($args{debug}) eq "stdout")
-        {
-            $self->{DEBUGFILE} = FileHandle->new(">&STDERR");
-            $self->{DEBUGFILE}->autoflush(1);
-        }
-        else
-        {
-            if (-e $args{debug})
-            {
-                if (-w $args{debug})
-                {
-                    $self->{DEBUGFILE} = FileHandle->new(">$args{debug}");
-                    $self->{DEBUGFILE}->autoflush(1);
-                }
-                else
-                {
-                    print "WARNING: debug file ($args{debug}) is not writable by you\n";
-                    print "         No debug information being saved.\n";
-                    $self->{DEBUG} = 0;
-                }
-            }
-            else
-            {
-                $self->{DEBUGFILE} = FileHandle->new(">$args{debug}");
-                if (defined($self->{DEBUGFILE}))
-                {
-                    $self->{DEBUGFILE}->autoflush(1);
-                }
-                else
-                {
-                    print "WARNING: debug file ($args{debug}) does not exist \n";
-                    print "         and is not writable by you.\n";
-                    print "         No debug information being saved.\n";
-                    $self->{DEBUG} = 0;
-                }
-            }
-        }
-    }
+    XML::Stream::Tools::setup_debug($self, %args); 
 
     $self->{SID} = exists($args{sid}) ? $args{sid} : "__xmlstream__:sid";
 
     $self->{STYLE} = (exists($args{style}) ? lc($args{style}) : "tree");
     $self->{DTD} = (exists($args{dtd}) ? lc($args{dtd}) : 0);
 
+    my $weak = $self;
+    weaken $weak;
     if ($self->{STYLE} eq "tree")
     {
-        $self->{HANDLER}->{startDocument} = sub{ $self->startDocument(@_); };
-        $self->{HANDLER}->{endDocument} = sub{ $self->endDocument(@_); };
+        $self->{HANDLER}->{startDocument} = sub{ $weak->startDocument(@_); };
+        $self->{HANDLER}->{endDocument} = sub{ $weak->endDocument(@_); };
         $self->{HANDLER}->{startElement} = sub{ &XML::Stream::Tree::_handle_element(@_); };
         $self->{HANDLER}->{endElement} = sub{ &XML::Stream::Tree::_handle_close(@_); };
         $self->{HANDLER}->{characters} = sub{ &XML::Stream::Tree::_handle_cdata(@_); };
     }
     elsif ($self->{STYLE} eq "node")
     {
-        $self->{HANDLER}->{startDocument} = sub{ $self->startDocument(@_); };
-        $self->{HANDLER}->{endDocument} = sub{ $self->endDocument(@_); };
+        $self->{HANDLER}->{startDocument} = sub{ $weak->startDocument(@_); };
+        $self->{HANDLER}->{endDocument} = sub{ $weak->endDocument(@_); };
         $self->{HANDLER}->{startElement} = sub{ &XML::Stream::Node::_handle_element(@_); };
         $self->{HANDLER}->{endElement} = sub{ &XML::Stream::Node::_handle_close(@_); };
         $self->{HANDLER}->{characters} = sub{ &XML::Stream::Node::_handle_cdata(@_); };
@@ -277,7 +226,9 @@ sub parse
             $self->{XML} = substr($self->{XML},length($self->{CNAME}->[$self->{CURR}])+3,length($self->{XML})-length($self->{CNAME}->[$self->{CURR}])-3);
 
             $self->{PARSING} = 0 if ($self->{NONBLOCKING} == 1);
-            &{$self->{HANDLER}->{endElement}}($self,$self->{CNAME}->[$self->{CURR}]);
+            my $weak = $self;
+            weaken $weak;
+            &{$self->{HANDLER}->{endElement}}($weak, $weak->{CNAME}->[$weak->{CURR}]);
             $self->{PARSING} = 1 if ($self->{NONBLOCKING} == 1);
 
             $self->{CURR}--;
@@ -321,11 +272,13 @@ sub parse
             {
             }
 
-            &{$self->{HANDLER}->{startElement}}($self,$name,%attribs);
+            my $weak = $self;
+            weaken $weak;
+            &{$self->{HANDLER}->{startElement}}($weak, $name,%attribs);
 
             if($empty == 1)
             {
-                &{$self->{HANDLER}->{endElement}}($self,$name);
+                &{$self->{HANDLER}->{endElement}}($weak, $name);
             }
             else
             {

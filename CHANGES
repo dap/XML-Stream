@@ -1,3 +1,5 @@
+  - Eliminate another set of cyclic references (szabgab)
+
 1.23_05 2011-06-23
   - RT#8834 unindented POD so that it reformats properly (szabgab)
   - Weaken cyclic references in XML::Stream to eliminate memory leak (szabgab)

@@ -1,11 +1,10 @@
 use strict;
 use warnings;
 
-use Test::More tests=>56;
+use Test::More tests => 56;
 
 BEGIN{ use_ok( "XML::Stream","Tree", "Node" ); }
 
-my $packetIndex;
 my @packets;
 $packets[0] = "<blah test='2'><bingo/></blah>";
 $packets[1] = "<foo test='3'>
@@ -70,19 +69,18 @@ $packets[15] = "<startest>
     <bingo/></startest>";
 $packets[16] = "<cdata_test test='6'>This is cdata with &lt;tags/&gt; embedded &lt;in&gt;it&lt;/in&gt;.<bingo/></cdata_test>";
 
+my $packetIndex;
 foreach my $xmlType ("tree","node")
 {
-    $packetIndex = 0;
-    
-    my $stream = XML::Stream->new(style=>$xmlType);
+    my $stream = XML::Stream->new(style => $xmlType);
     ok( defined($stream), "new() - $xmlType" );
     isa_ok( $stream, "XML::Stream" );
 
-    $stream->SetCallBacks(node=>sub{ &onPacket($xmlType,@_) });
+    $packetIndex = 0;
+    $stream->SetCallBacks(node => sub{ onPacket($xmlType, @_) });
 
     my $sid = $stream->OpenFile("t/test.xml");
-    my %status;
-    while( %status = $stream->Process())
+    while( my %status = $stream->Process())
     {
         last if ($status{$sid} == -1);
     }
@@ -90,14 +88,14 @@ foreach my $xmlType ("tree","node")
 
 sub onPacket
 {
-    my $xmlType = shift;
-    my $sid = shift;
+    my $xmlType     = shift;
+    my $sid         = shift;
 
     if ($xmlType eq "tree")
     {
         my $tree = shift;
 
-        my $test = &XML::Stream::BuildXML($tree,"<bingo/>");
+        my $test = XML::Stream::BuildXML($tree, "<bingo/>");
         $test =~ s/\r//g;
         is( $test, $packets[$packetIndex], "packet[$packetIndex]" );
     }
@@ -105,13 +103,13 @@ sub onPacket
     {
         my $node = shift;
 
-        my $test = &XML::Stream::BuildXML($node,"<bingo/>");
+        my $test = XML::Stream::BuildXML($node, "<bingo/>");
         $test =~ s/\r//g;
         is( $test, $packets[$packetIndex], "packet[$packetIndex]" );
 
         $node->add_raw_xml("<bingo/>");
         
-        $test = &XML::Stream::BuildXML($node);
+        $test = XML::Stream::BuildXML($node);
         $test =~ s/\r//g;
         is( $test, $packets[$packetIndex], "packet[$packetIndex]" );
     }

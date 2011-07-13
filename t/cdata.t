@@ -5,28 +5,28 @@ use Test::More tests => 11;
 
 BEGIN { use_ok('XML::Stream', 'Node'); }
 
-my $a = XML::Stream::Node->new;
-isa_ok $a, 'XML::Stream::Node';
-$a->set_tag("body");
-$a->add_cdata("one");
+my $x = XML::Stream::Node->new;
+isa_ok $x, 'XML::Stream::Node';
+$x->set_tag("body");
+$x->add_cdata("one");
 
-is ($a->GetXML(), q[<body>one</body>], 'cdata');
+is ($x->GetXML(), q[<body>one</body>], 'cdata');
 
-my $b = $a->copy;
-isa_ok $b, 'XML::Stream::Node';
-isnt $a, $b, 'not the same';
+my $y = $x->copy;
+isa_ok $y, 'XML::Stream::Node';
+isnt $x, $y, 'not the same';
 
-is ($b->GetXML(), q[<body>one</body>], 'copy cdata');
+is ($y->GetXML(), q[<body>one</body>], 'copy cdata');
 
-$a->add_child("a","two")->put_attrib(href=>"http://www.google.com");
-$a->add_cdata("three");
+$x->add_child("a","two")->put_attrib(href=>"http://www.google.com");
+$x->add_cdata("three");
 
-is ($a->GetXML(), q[<body>one<a href='http://www.google.com'>two</a>three</body>], 'cdata/element/cdata');
+is ($x->GetXML(), q[<body>one<a href='http://www.google.com'>two</a>three</body>], 'cdata/element/cdata');
 
-my $c = $a->copy;
-isa_ok $c, 'XML::Stream::Node';
-isnt $a, $c, 'not the same';
-isnt $b, $c, 'not the same';
+my $z = $x->copy;
+isa_ok $z, 'XML::Stream::Node';
+isnt $x, $z, 'not the same';
+isnt $y, $z, 'not the same';
 
-is ($c->GetXML(), q[<body>one<a href='http://www.google.com'>two</a>three</body>], 'copy cdata/element/cdata');
+is ($z->GetXML(), q[<body>one<a href='http://www.google.com'>two</a>three</body>], 'copy cdata/element/cdata');
 

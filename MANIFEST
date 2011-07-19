@@ -7,6 +7,7 @@ lib/XML/Stream/Namespace.pm
 lib/XML/Stream/Node.pm
 lib/XML/Stream/Parser.pm
 lib/XML/Stream/Parser/DTD.pm
+lib/XML/Stream/Tools.pm
 lib/XML/Stream/Tree.pm
 lib/XML/Stream/XPath.pm
 lib/XML/Stream/XPath/Op.pm
@@ -22,6 +23,7 @@ t/buildxml.t
 t/cdata.t
 t/load.t
 t/memory_cycle.t
+t/net_xmpp.t
 t/parse_node.t
 t/parse_tree.t
 t/quotes.t

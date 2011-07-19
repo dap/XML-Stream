@@ -116,7 +116,7 @@ else
 }
 
 
-$VERSION = "1.23_05";
+$VERSION = "1.23_06";
 $NONBLOCKING = 0;
 
 #use XML::Stream::Namespace;

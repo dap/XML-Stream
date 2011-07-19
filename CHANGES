@@ -1,6 +1,15 @@
+1.23_06 2011-07-19
+====
   - Eliminate another set of cyclic references (szabgab)
+  - Stylistic improvements in tests (szabgab)
+  - Refactor debug output to separate module (szabgab)
+  - Weaken scalar references to address additional memory leak (szabgab)
+  - Add additional tests for scalar references (szabgab)
+  - Documentation format corrections (szabgab)
+
 
 1.23_05 2011-06-23
+====
   - RT#8834 unindented POD so that it reformats properly (szabgab)
   - Weaken cyclic references in XML::Stream to eliminate memory leak (szabgab)
   - Increase use of warnings and strictures in tests and code (szabgab)

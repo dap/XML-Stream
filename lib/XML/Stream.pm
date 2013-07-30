@@ -2181,7 +2181,7 @@ sub SASLAnswerChallenge
         $response = $self->{SIDS}->{$sid}->{sasl}->{client}->client_step($challenge);
     }
 
-    my $response64 = MIME::Base64::encode_base64($response,"");
+    my $response64 = defined($response) ? MIME::Base64::encode_base64($response,"") : "";
     $self->SASLResponse($sid,$response64);
 }
 

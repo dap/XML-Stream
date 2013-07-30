@@ -700,7 +700,14 @@ sub Connect
                     $self->{SIDS}->{newconnection}->{ssl_params}
             );
             $self->debug(1,"Connect: ssl_sock($self->{SIDS}->{newconnection}->{sock})");
-            $self->debug(1,"Connect: SSL: We are secure") if ($self->{SIDS}->{newconnection}->{sock});
+
+	    if ($self->{SIDS}->{newconnection}->{sock}) {
+		$self->debug(1,"Connect: SSL: We are secure");
+	    } else {
+		my $err = "Error during socketToSSL: $IO::Socket::SSL::SSL_ERROR";
+		$self->debug(1,"Connect: SSL: $err");
+		$self->SetErrorCode("newconnection",$err);
+	    }
         }
         return unless $self->{SIDS}->{newconnection}->{sock};
     }
@@ -1919,6 +1926,7 @@ sub StartTLS
 
     if (!$self->TLSClientSecure($sid))
     {
+	$self->debug(4,"StartTLS: socket was not secured");
         return;
     }
 
@@ -1970,10 +1978,19 @@ sub TLSClientProceed
         return;
     }
     
-    IO::Socket::SSL->start_SSL(
+    my $ok = IO::Socket::SSL->start_SSL(
         $self->{SIDS}->{$sid}->{sock},
         $self->{SIDS}->{$sid}->{ssl_params}
     );
+
+    if (!$ok) {
+	my $err = "Error during start_SSL: $IO::Socket::SSL::SSL_ERROR";
+	$self->debug(1,"TLSClientProceed: $err");
+        $self->SetErrorCode($sid,$err);
+	$self->{SIDS}->{$sid}->{tls}->{error} = $err;
+        $self->{SIDS}->{$sid}->{tls}->{done} = 1;
+	return;
+    }
 
     $self->debug(1,"TLSClientProceed: ssl_sock($self->{SIDS}->{$sid}->{sock})");
     $self->debug(1,"TLSClientProceed: SSL: We are secure")

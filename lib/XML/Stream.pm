@@ -745,20 +745,6 @@ sub Connect
             $self->{SIDS}->{newconnection}->{myhostname} = $self->{SIDS}->{newconnection}->{derivedhostname};
         }
 
-#        if (!defined($PAC))
-#        {
-#            eval("use HTTP::ProxyAutoConfig;");
-#            if ($@)
-#            {
-#                $PAC = 0;
-#            }
-#            else
-#            {
-#                require HTTP::ProxyAutoConfig;
-#                $PAC = HTTP::ProxyAutoConfig->new();
-#            }
-#        }
-
         if ($PAC eq "0") {
             if (exists($ENV{"http_proxy"}))
             {

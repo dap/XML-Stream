@@ -1,3 +1,7 @@
+1.23_07 2014-12-17
+====
+  - Correct incorrectly tagged 1.23_06 (errantly tagged as 1.24_06)
+
 1.23_06 2011-07-19
 ====
   - Eliminate another set of cyclic references (szabgab)

@@ -37,8 +37,8 @@ my $build = Module::Build->new(
 	create_makefile_pl => 'traditional',
 	meta_merge => {
 		'resources' => {
-			'bugtracker' => 'https://rt.cpan.org/Dist/Display.html?Queue=XML-Stream',
-			'repository' => 'http://github.com/dap/XML-Stream',
+			'bugtracker' => 'https://github.com/dap/XML-Stream/issues',
+			'repository' => 'https://github.com/dap/XML-Stream',
 		}
 	},
 );

@@ -143,7 +143,7 @@ use strict;
 use warnings;
 use vars qw( $VERSION $LOADED );
 
-$VERSION = "1.23_07";
+$VERSION = "1.24";
 $LOADED = 1;
 
 sub new

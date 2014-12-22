@@ -1,4 +1,4 @@
-XML::Stream v1.23_07 2014-12-17
+XML::Stream v1.24 2014-12-22
 
 This module provides you with access to XML Streams.  An XML Stream
 is just that.  A stream of XML over a connection between two computers.
@@ -29,5 +29,5 @@ RECOMMENDATIONS
   Net::DNS              - Enables access to SRV records.
 
 Please submit bug reports at
-http://rt.cpan.org/Public/Bug/Report.html?Queue=XML-Stream
+https://github.com/dap/XML-Stream/issues
 

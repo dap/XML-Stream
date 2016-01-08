@@ -194,6 +194,12 @@ sub parse
     {
         my $start = index($self->{XML},"<");
 
+	# don't continue unless we have enough data to identify the prolog
+        if (length($self->{XML}) < 3) {
+            $self->{PARSING} = 0;
+            return $self->returnData(0);
+        }
+
         if ((substr($self->{XML},$start,3) eq "<?x") ||
             (substr($self->{XML},$start,3) eq "<?X"))
         {

@@ -588,7 +588,11 @@ sub Connect
 
     $self->debug(4,"Connect: timeout($timeout)");
     
-
+    if (not exists($self->{SIDS}->{newconnection}->{servername})) {
+        $self->{SIDS}->{newconnection}->{servername} =
+            $self->{SIDS}->{newconnection}->{hostname};
+    }
+ 
     if (exists($self->{SIDS}->{newconnection}->{srv}))
     {
         $self->debug(1,"Connect: srv requested");
@@ -599,9 +603,9 @@ sub Connect
             
             if ($query)
             { 
-                $self->{SIDS}->{newconnection}->{hostname} = ($query->answer)[0]->target();
+                $self->{SIDS}->{newconnection}->{servername} = ($query->answer)[0]->target();
                 $self->{SIDS}->{newconnection}->{port} = ($query->answer)[0]->port();
-                $self->debug(1,"Connect: srv host: $self->{SIDS}->{newconnection}->{hostname}");
+                $self->debug(1,"Connect: srv host: $self->{SIDS}->{newconnection}->{servername}");
                 $self->debug(1,"Connect: srv post: $self->{SIDS}->{newconnection}->{port}");
             }
             else
@@ -662,7 +666,7 @@ sub Connect
         # Check some things that we have to know in order get the connection up
         # and running.  Server hostname, port number, namespace, etc...
         #-----------------------------------------------------------------------
-        if ($self->{SIDS}->{newconnection}->{hostname} eq "")
+        if ($self->{SIDS}->{newconnection}->{servername} eq "")
         {
             $self->SetErrorCode("newconnection","Server hostname not specified");
             return;
@@ -682,7 +686,7 @@ sub Connect
         # abort ourselves and let the user check $! on his own.
         #-----------------------------------------------------------------------
         $self->{SIDS}->{newconnection}->{sock} =
-            IO::Socket::INET->new(PeerAddr=>$self->{SIDS}->{newconnection}->{hostname},
+            IO::Socket::INET->new(PeerAddr=>$self->{SIDS}->{newconnection}->{servername},
                                  PeerPort=>$self->{SIDS}->{newconnection}->{port},
                                  Proto=>"tcp",
                                  (($timeout ne "") ? ( Timeout=>$timeout ) : ()),

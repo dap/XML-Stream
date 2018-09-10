@@ -169,7 +169,7 @@ B<debugfh>.
 B<debuglevel> determines the amount of debug to generate.
 0 is the least, 1 is a little more, N is the limit you want.
 
-B<debugtime> determines wether a timestamp should be preappended
+B<debugtime> determines whether a timestamp should be preappended
 to the entry.
 B<style> defines the way the data structure is
 returned.  The two available styles are:

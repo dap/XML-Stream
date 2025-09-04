@@ -190,7 +190,7 @@ sub parse
 
     $self->{PARSING} = 1;
 
-    if(!$self->{DOC} == 1)
+    if($self->{DOC} != 1)
     {
         my $start = index($self->{XML},"<");
 

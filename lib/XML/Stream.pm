@@ -633,6 +633,7 @@ sub Connect
     {
         my %ssl_params = (
             SSL_verify_mode => $self->{SIDS}->{newconnection}->{ssl_verify},
+            SSL_hostname => $self->{SIDS}->{newconnection}->{hostname}
         );
 
         if ( 0x00 != $self->{SIDS}->{newconnection}->{ssl_verify} )

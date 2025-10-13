@@ -205,8 +205,7 @@ sub new
     XML::Stream::Tools::setup_debug($self, %args); 
 
     my $hostname = hostname();
-    my $address = gethostbyname($hostname) ||
-        die("Cannot resolve $hostname: $!");
+    my $address = gethostbyname($hostname) || "";
     my $fullname = gethostbyaddr($address,AF_INET) || $hostname;
 
     $self->debug(1,"new: hostname = ($fullname)");

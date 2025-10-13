@@ -636,6 +636,9 @@ sub Connect
     {
         my %ssl_params = (
             SSL_verify_mode => $self->{SIDS}->{newconnection}->{ssl_verify},
+            SSL_verifycn_name => $self->{SIDS}->{newconnection}->{to}
+                ? $self->{SIDS}->{newconnection}->{to}
+                : $self->{SIDS}->{newconnection}->{hostname},
             SSL_hostname => $self->{SIDS}->{newconnection}->{hostname}
         );
 
